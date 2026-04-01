@@ -177,3 +177,73 @@ async def test_create_agent_bad_directory():
             "skip_permissions": True,
         })
         assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_set_agent_status():
+    from server import app, agent_manual_status
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/agents/phase-1/status", json={
+            "task": "fixing state import",
+            "progress": 60,
+            "eta": "5m",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "updated"
+        assert "phase-1" in agent_manual_status
+        assert agent_manual_status["phase-1"]["task"] == "fixing state import"
+        assert agent_manual_status["phase-1"]["progress"] == 60
+
+
+@pytest.mark.asyncio
+async def test_get_agent_status():
+    from server import app, agent_manual_status
+    import time as t
+    agent_manual_status["phase-2"] = {"task": "test task", "progress": 40, "updated_at": t.time()}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/agents/phase-2/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["task"] == "test task"
+        assert data["progress"] == 40
+
+
+@pytest.mark.asyncio
+async def test_clear_agent_status():
+    from server import app, agent_manual_status
+    import time as t
+    agent_manual_status["phase-3"] = {"task": "old task", "progress": 80, "updated_at": t.time()}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/agents/phase-3/status", json={"clear": True})
+        assert resp.status_code == 200
+        assert "phase-3" not in agent_manual_status
+
+
+@pytest.mark.asyncio
+async def test_get_agent_owns():
+    from server import app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/agents/phase-1/owns")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["agent"] == "phase-1"
+        assert "patterns" in data
+        assert "resolved" in data
+
+
+@pytest.mark.asyncio
+async def test_set_blocked_status():
+    from server import app, agent_manual_status
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/agents/phase-3/status", json={
+            "blocked_by": "phase-1",
+            "blocked_reason": "needs config change",
+        })
+        assert resp.status_code == 200
+        assert agent_manual_status["phase-3"]["blocked_by"] == "phase-1"

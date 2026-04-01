@@ -578,6 +578,15 @@ class AgentCreate(BaseModel):
     skip_permissions: bool = True
 
 
+class AgentStatus(BaseModel):
+    task: Optional[str] = None
+    progress: Optional[int] = None
+    eta: Optional[str] = None
+    blocked_by: Optional[str] = None
+    blocked_reason: Optional[str] = None
+    clear: bool = False
+
+
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9\-]{0,18}[a-z0-9]$")
 VALID_MODELS = {"opus", "sonnet", "haiku"}
 STARTUP_MD = Path(__file__).parent / "startup.md"
@@ -645,6 +654,101 @@ async def browse_directory(path: str = "~"):
     except PermissionError:
         return JSONResponse({"error": "Permission denied"}, status_code=403)
     return {"current": expanded, "parent": parent, "directories": directories}
+
+
+@app.post("/api/agents/{agent_name}/status")
+async def set_agent_status(agent_name: str, body: AgentStatus):
+    """Set manual status for an agent."""
+    if agent_name not in AGENT_NAMES:
+        return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
+
+    if body.clear:
+        agent_manual_status.pop(agent_name, None)
+        return {"status": "cleared", "agent": agent_name}
+
+    current = agent_manual_status.get(agent_name, {})
+
+    if body.task is not None:
+        current["task"] = body.task
+    if body.progress is not None:
+        current["progress"] = max(0, min(100, body.progress))
+    if body.eta is not None:
+        current["eta"] = body.eta
+    if body.blocked_by is not None:
+        current["blocked_by"] = body.blocked_by
+        current["blocked_reason"] = body.blocked_reason
+    if body.blocked_reason is not None and body.blocked_by is None:
+        current["blocked_reason"] = body.blocked_reason
+
+    current["updated_at"] = time.time()
+    agent_manual_status[agent_name] = current
+
+    # Auto-DM the blocking agent if blocked_by is set
+    if body.blocked_by and body.blocked_by in AGENT_NAMES:
+        reason_text = f" — {body.blocked_reason}" if body.blocked_reason else ""
+        dm_content = f"{agent_name} is blocked by you{reason_text}"
+        saved = await save_message("system", body.blocked_by, dm_content, "system")
+        await broadcast_ws({"type": "message", "message": saved})
+        await dispatch_to_agents(saved)
+
+    return {"status": "updated", "agent": agent_name}
+
+
+@app.get("/api/agents/{agent_name}/status")
+async def get_agent_status(agent_name: str):
+    """Get full computed status card for an agent."""
+    if agent_name not in AGENT_NAMES:
+        return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
+
+    # Find agent config
+    agent_cfg = next((a for a in AGENTS if a["name"] == agent_name), None)
+    session = agent_cfg["tmux_session"] if agent_cfg else None
+
+    # Auto-detected activity
+    activity = get_agent_activity(session) if session else {"presence": "offline", "activity": None}
+
+    # Manual status (respects TTL)
+    manual = get_manual_status(agent_name)
+
+    # Staleness
+    stalled_minutes = get_stalled_minutes(agent_name)
+
+    # Ownership and last commit
+    owns = agent_owns_resolved.get(agent_name, [])
+    last_commit = agent_last_commit.get(agent_name)
+
+    return {
+        "agent": agent_name,
+        "presence": "blocked" if manual.get("blocked_by") else activity["presence"],
+        "activity": activity.get("activity"),
+        "in_room": agent_membership.get(agent_name, False),
+        "dynamic": agent_cfg.get("dynamic", False) if agent_cfg else False,
+        "task": manual.get("task"),
+        "progress": manual.get("progress"),
+        "eta": manual.get("eta"),
+        "blocked_by": manual.get("blocked_by"),
+        "blocked_reason": manual.get("blocked_reason"),
+        "stalled_minutes": stalled_minutes,
+        "owns": owns,
+        "last_commit": last_commit,
+    }
+
+
+@app.get("/api/agents/{agent_name}/owns")
+async def get_agent_owns(agent_name: str):
+    """Get ownership patterns and resolved filenames for an agent."""
+    if agent_name not in AGENT_NAMES:
+        return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
+
+    agent_cfg = next((a for a in AGENTS if a["name"] == agent_name), None)
+    patterns = agent_cfg.get("owns", []) if agent_cfg else []
+    resolved = agent_owns_resolved.get(agent_name, [])
+
+    return {
+        "agent": agent_name,
+        "patterns": patterns,
+        "resolved": resolved,
+    }
 
 
 @app.post("/api/agents/{agent_name}/deboard")
