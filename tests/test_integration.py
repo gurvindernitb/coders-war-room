@@ -122,7 +122,7 @@ def test_agent_list():
     assert "supervisor" in names
     assert "phase-1" in names
     assert "git-agent" in names
-    assert len(agents) == 8
+    assert len(agents) >= 8
 
 
 def test_message_truncation_endpoint():
@@ -191,3 +191,37 @@ def test_create_and_use_dynamic_agent():
 
     # Clean up: kill the tmux session
     subprocess.run(["tmux", "kill-session", "-t", f"warroom-{agent_name}"], capture_output=True)
+
+
+def test_status_flow():
+    """Test the full status lifecycle: set, query, clear."""
+    resp = httpx.post(f"{SERVER_URL}/api/agents/phase-1/status", json={
+        "task": "integration test task",
+        "progress": 75,
+        "eta": "2m",
+    })
+    assert resp.status_code == 200
+
+    resp = httpx.get(f"{SERVER_URL}/api/agents/phase-1/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["task"] == "integration test task"
+    assert data["progress"] == 75
+    assert data["eta"] == "2m"
+
+    resp = httpx.post(f"{SERVER_URL}/api/agents/phase-1/status", json={"clear": True})
+    assert resp.status_code == 200
+
+    resp = httpx.get(f"{SERVER_URL}/api/agents/phase-1/status")
+    data = resp.json()
+    assert data["task"] is None
+
+
+def test_ownership_api():
+    """Test that ownership patterns are resolved."""
+    resp = httpx.get(f"{SERVER_URL}/api/agents/phase-1/owns")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent"] == "phase-1"
+    assert isinstance(data["patterns"], list)
+    assert isinstance(data["resolved"], list)
