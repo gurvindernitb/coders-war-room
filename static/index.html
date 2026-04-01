@@ -412,6 +412,17 @@
   .msg-input:focus { border-color: var(--blue); outline: none; }
   .msg-input::placeholder { color: var(--text-dim); }
 
+  /* ─── Drop zones ─── */
+  .msg-input.drop-active {
+    border-color: var(--blue) !important;
+    box-shadow: 0 0 12px rgba(68,138,255,0.2);
+  }
+
+  .ac.drop-active {
+    border-color: var(--green) !important;
+    box-shadow: 0 0 12px rgba(0,230,118,0.2);
+  }
+
   .send-btn {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
@@ -1417,6 +1428,27 @@ function renderAgents() {
       };
     });
 
+    // Drop zone: file → agent card
+    card.addEventListener('dragover', (e) => {
+      if (e.dataTransfer.types.includes('application/x-warroom-file')) {
+        e.preventDefault();
+        card.classList.add('drop-active');
+      }
+    });
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('drop-active');
+    });
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.classList.remove('drop-active');
+      const filePath = e.dataTransfer.getData('application/x-warroom-file');
+      if (filePath) {
+        $target.value = a.name;
+        $input.value = `[file: ${filePath}] `;
+        $input.focus();
+      }
+    });
+
     $agents.appendChild(card);
   });
 
@@ -1790,6 +1822,32 @@ function initFileTree() {
   $fileTree.innerHTML = '';
   loadDir('.', 0, $fileTree, true);
 }
+
+// ═══════════ Drag & Drop: File → Chat Input ═══════════
+$input.addEventListener('dragover', (e) => {
+  if (e.dataTransfer.types.includes('application/x-warroom-file')) {
+    e.preventDefault();
+    $input.classList.add('drop-active');
+  }
+});
+
+$input.addEventListener('dragleave', () => {
+  $input.classList.remove('drop-active');
+});
+
+$input.addEventListener('drop', (e) => {
+  e.preventDefault();
+  $input.classList.remove('drop-active');
+  const filePath = e.dataTransfer.getData('application/x-warroom-file');
+  if (filePath) {
+    const start = $input.selectionStart;
+    const before = $input.value.slice(0, start);
+    const after = $input.value.slice(start);
+    $input.value = before + filePath + ' ' + after;
+    $input.focus();
+    $input.selectionStart = $input.selectionEnd = start + filePath.length + 1;
+  }
+});
 
 // ═══════════ Init ═══════════
 fetch('/api/agents').then(r => r.json()).then(agents => {
