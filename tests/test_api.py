@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 import sys
@@ -129,3 +131,49 @@ async def test_browse_nonexistent():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/api/browse?path=/Users/gurvindersingh/nonexistent_dir_xyz")
         assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_agent_duplicate_name():
+    from server import app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/agents/create", json={
+            "name": "supervisor",
+            "directory": os.path.expanduser("~"),
+            "role": "Duplicate",
+            "model": "opus",
+            "skip_permissions": True,
+        })
+        assert resp.status_code == 400
+        assert "already exists" in resp.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_create_agent_invalid_name():
+    from server import app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/agents/create", json={
+            "name": "BAD NAME!",
+            "directory": os.path.expanduser("~"),
+            "role": "Bad",
+            "model": "opus",
+            "skip_permissions": True,
+        })
+        assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_agent_bad_directory():
+    from server import app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/agents/create", json={
+            "name": "ghost-agent",
+            "directory": "/nonexistent/path",
+            "role": "Ghost",
+            "model": "opus",
+            "skip_permissions": True,
+        })
+        assert resp.status_code == 400

@@ -282,13 +282,14 @@ async def dispatch_to_agents(msg: dict):
             continue
 
         if check_agent_ready(session):
+            # Flush any queued messages first, ONE AT A TIME
             if name in agent_queues and agent_queues[name]:
                 queued = agent_queues.pop(name)
-                queued.append(msg)
-                text = format_batch_for_tmux(queued)
-            else:
-                text = format_message_for_tmux(msg)
-            send_to_tmux(session, text)
+                for queued_msg in queued:
+                    send_to_tmux(session, format_message_for_tmux(queued_msg))
+                    await asyncio.sleep(0.3)
+            # Then deliver the current message
+            send_to_tmux(session, format_message_for_tmux(msg))
         else:
             if name not in agent_queues:
                 agent_queues[name] = []
@@ -314,11 +315,9 @@ async def flush_queues_loop():
                 continue
 
             messages = agent_queues.pop(name)
-            if len(messages) == 1:
-                text = format_message_for_tmux(messages[0])
-            else:
-                text = format_batch_for_tmux(messages)
-            send_to_tmux(session, text)
+            for queued_msg in messages:
+                send_to_tmux(session, format_message_for_tmux(queued_msg))
+                await asyncio.sleep(0.3)
 
 
 async def agent_status_loop():
@@ -469,6 +468,7 @@ async def list_agents():
             "presence": get_agent_activity(a["tmux_session"])["presence"],
             "activity": get_agent_activity(a["tmux_session"])["activity"],
             "in_room": agent_membership.get(a["name"], False),
+            "dynamic": a.get("dynamic", False),
         }
         for a in AGENTS
     ]
