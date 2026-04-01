@@ -1,4 +1,5 @@
 import asyncio
+import fnmatch
 import glob as globmod
 import json
 import re
@@ -27,6 +28,12 @@ PORT = CONFIG.get("port", 5680)
 AGENTS = CONFIG.get("agents", [])
 AGENT_NAMES = {a["name"] for a in AGENTS}
 AGENT_SESSIONS = {a["name"]: a["tmux_session"] for a in AGENTS}
+COLORS = {
+    'gurvinder': '#ff9100', 'supervisor': '#b388ff',
+    'phase-1': '#448aff', 'phase-2': '#00e676', 'phase-3': '#ff80ab',
+    'phase-4': '#18ffff', 'phase-5': '#ea80fc', 'phase-6': '#69f0ae',
+    'git-agent': '#ffd740',
+}
 # Each agent's working directory (for Warp file browser)
 PROJECT_PATH = str(Path(CONFIG.get("project_path", "~")).expanduser())
 AGENT_DIRS: dict[str, str] = {a["name"]: PROJECT_PATH for a in AGENTS}
@@ -75,6 +82,35 @@ def resolve_ownership():
                 if p.is_file():
                     resolved.add(p.name)
         agent_owns_resolved[name] = sorted(resolved)
+
+
+dir_has_owned: dict[str, bool] = {}
+
+
+def precompute_dir_ownership():
+    """Pre-compute which directories contain owned files."""
+    dir_has_owned.clear()
+    for agent in AGENTS:
+        for pattern in agent.get("owns", []):
+            full = str(Path(PROJECT_PATH) / pattern)
+            matches = globmod.glob(full, recursive=True)
+            for match in matches:
+                if not Path(match).is_file():
+                    continue
+                rel = str(Path(match).relative_to(PROJECT_PATH))
+                parts = Path(rel).parts
+                for i in range(len(parts) - 1):
+                    dir_path = str(Path(*parts[:i + 1]))
+                    dir_has_owned[dir_path] = True
+
+
+def get_file_owner(relative_path: str) -> tuple:
+    """Return (agent_name, color) for a file, or (None, None)."""
+    for agent in AGENTS:
+        for pattern in agent.get("owns", []):
+            if fnmatch.fnmatch(relative_path, pattern):
+                return agent["name"], COLORS.get(agent["name"])
+    return None, None
 
 
 def update_staleness(agent_name: str, tool: str, file: str) -> bool:
@@ -551,6 +587,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     reconcile_tmux_sessions()  # Adopt orphaned sessions on boot
     resolve_ownership()
+    precompute_dir_ownership()
     refresh_last_commits()
     task1 = asyncio.create_task(flush_queues_loop())
     task2 = asyncio.create_task(agent_status_loop())
@@ -654,6 +691,52 @@ async def browse_directory(path: str = "~"):
     except PermissionError:
         return JSONResponse({"error": "Permission denied"}, status_code=403)
     return {"current": expanded, "parent": parent, "directories": directories}
+
+
+@app.get("/api/files")
+async def list_files(path: str = "."):
+    """List directory contents with ownership info."""
+    target = (Path(PROJECT_PATH) / path).resolve()
+    project_resolved = Path(PROJECT_PATH).resolve()
+    if not str(target).startswith(str(project_resolved)):
+        return JSONResponse({"error": "Path must be under project directory"}, status_code=403)
+    if not target.is_dir():
+        return JSONResponse({"error": f"Not a directory: {path}"}, status_code=404)
+    parent_rel = str(target.parent.relative_to(project_resolved)) if target != project_resolved else None
+    entries = []
+    try:
+        items = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+        for item in items:
+            name = item.name
+            if name.startswith(".") and name != ".claude":
+                continue
+            rel_path = str(item.relative_to(project_resolved))
+            if item.is_dir():
+                entries.append({"name": name, "type": "dir", "path": rel_path, "has_owned": dir_has_owned.get(rel_path, False)})
+            elif item.is_file():
+                owner, color = get_file_owner(rel_path)
+                entries.append({"name": name, "type": "file", "path": rel_path, "owner": owner, "color": color})
+    except PermissionError:
+        return JSONResponse({"error": "Permission denied"}, status_code=403)
+    return {"current": str(target.relative_to(project_resolved)) if target != project_resolved else ".", "parent": parent_rel, "entries": entries}
+
+
+@app.post("/api/files/open")
+async def open_file(data: dict):
+    """Open a file in the system default editor."""
+    file_path = data.get("path", "")
+    full_path = (Path(PROJECT_PATH) / file_path).resolve()
+    project_resolved = Path(PROJECT_PATH).resolve()
+    if not str(full_path).startswith(str(project_resolved)):
+        return JSONResponse({"error": "Path must be under project directory"}, status_code=403)
+    if not full_path.is_file():
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    try:
+        # Use macOS 'open' to launch in default editor (VS Code, etc.)
+        subprocess.run(["open", str(full_path)], capture_output=True, timeout=5)
+        return {"status": "opened", "path": file_path}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/agents/{agent_name}/status")
