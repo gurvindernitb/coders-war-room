@@ -140,6 +140,21 @@ case "$1" in
         shift
         reboard_agent "$@"
         ;;
+    attach)
+        shift
+        AGENT="${1:-$WARROOM_AGENT}"
+        SESSION="warroom-$AGENT"
+        if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+            echo "Error: No session '$SESSION'. Agent not onboarded."
+            exit 1
+        fi
+        # Pop out into a new Terminal window
+        osascript -e "tell application \"Terminal\"
+            activate
+            do script \"tmux attach -t $SESSION\"
+        end tell" 2>/dev/null && echo "Opened $AGENT in Terminal.app" || \
+        echo "Could not open Terminal. Manual: tmux attach -t $SESSION"
+        ;;
     *)
         echo "Coder's War Room — Agent CLI"
         echo ""
@@ -149,6 +164,7 @@ case "$1" in
         echo "  warroom.sh mentions [--count N]         Show messages for me + @all"
         echo "  warroom.sh deboard [agent]               Leave war room (keep working)"
         echo "  warroom.sh reboard [agent]               Rejoin the war room"
+        echo "  warroom.sh attach <agent>                Pop out agent in Terminal.app"
         echo ""
         echo "Agent identity: $WARROOM_AGENT"
         echo "Server: $WARROOM_SERVER"

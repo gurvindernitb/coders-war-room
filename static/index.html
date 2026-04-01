@@ -212,7 +212,16 @@
     flex: 1;
   }
 
-  .agent-board-btn {
+  .agent-btn-row {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .agent-card:hover .agent-btn-row { opacity: 1; }
+
+  .agent-board-btn, .agent-cli-btn {
     font-family: 'JetBrains Mono', monospace;
     font-size: 9px;
     padding: 2px 8px;
@@ -225,8 +234,6 @@
     transition: opacity 0.15s, color 0.15s, border-color 0.15s;
   }
 
-  .agent-card:hover .agent-board-btn { opacity: 1; }
-
   .agent-board-btn:hover {
     color: var(--accent-red);
     border-color: var(--accent-red);
@@ -235,6 +242,19 @@
   .agent-board-btn.reboard:hover {
     color: var(--accent-green);
     border-color: var(--accent-green);
+  }
+
+  .agent-cli-btn {
+    border: 1px solid var(--border-bright);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .agent-cli-btn:hover {
+    color: var(--accent-blue);
+    border-color: var(--accent-blue);
   }
 
   .agent-meta {
@@ -572,7 +592,10 @@ function renderAgents() {
       <div class="agent-card-top">
         <span class="${dotClass}"></span>
         <span class="agent-name" style="color:${color(a.name)}">${a.name}</span>
-        <button class="${btnClass}" data-agent="${a.name}" data-action="${btnLabel}">${btnLabel}</button>
+        <span class="agent-btn-row">
+          <button class="agent-cli-btn" data-agent="${a.name}" title="Open in Terminal">cli</button>
+          <button class="${btnClass}" data-agent="${a.name}" data-action="${btnLabel}">${btnLabel}</button>
+        </span>
       </div>
       <div class="agent-meta">
         ${role ? `<div class="agent-role">${role}</div>` : ''}
@@ -585,6 +608,12 @@ function renderAgents() {
       e.stopPropagation();
       $target.value = a.name;
       $input.focus();
+    };
+
+    // Click CLI button -> pop out in Terminal.app
+    card.querySelector('.agent-cli-btn').onclick = (e) => {
+      e.stopPropagation();
+      fetch(`/api/agents/${a.name}/attach`, { method: 'POST' });
     };
 
     // Click deboard/reboard button

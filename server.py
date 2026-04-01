@@ -437,6 +437,25 @@ async def agent_reboard(agent_name: str):
     return {"status": "reboarded", "agent": agent_name}
 
 
+@app.post("/api/agents/{agent_name}/attach")
+async def agent_attach(agent_name: str):
+    """Pop out an agent's Claude Code session into a new Terminal.app window."""
+    if agent_name not in AGENT_NAMES:
+        return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
+    session = AGENT_SESSIONS.get(agent_name)
+    if not tmux_session_exists(session):
+        return JSONResponse({"error": f"No tmux session for {agent_name}"}, status_code=404)
+    try:
+        subprocess.run(
+            ["osascript", "-e",
+             f'tell application "Terminal"\n  activate\n  do script "tmux attach -t {session}"\nend tell'],
+            capture_output=True, timeout=5,
+        )
+        return {"status": "attached", "agent": agent_name, "session": session}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # Keep old endpoints as aliases for backwards compat
 @app.post("/api/agents/{agent_name}/leave")
 async def agent_leave(agent_name: str):
