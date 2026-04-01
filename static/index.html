@@ -829,6 +829,132 @@
     margin-left: 4px;
     opacity: 0.6;
   }
+
+  /* ─── Progress bar ─── */
+  .ac-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    padding-left: 15px;
+  }
+
+  .ac-progress-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    max-width: 120px;
+  }
+
+  .ac-progress-fill {
+    height: 100%;
+    background: var(--green);
+    border-radius: 2px;
+    transition: width 0.5s ease;
+  }
+
+  .ac-progress-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  /* ─── Blocker ─── */
+  .ac-blocker {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 3px 8px 3px 15px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--red);
+    background: var(--red-dim);
+    border-radius: 3px;
+    margin-left: 15px;
+    margin-right: 4px;
+  }
+
+  /* ─── Owned files pills ─── */
+  .ac-owns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 5px;
+    padding-left: 15px;
+  }
+
+  .ac-own-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    background: rgba(62,78,100,0.15);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
+  .ac-own-more {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    padding: 1px 5px;
+    cursor: default;
+  }
+
+  /* ─── Last commit ─── */
+  .ac-commit {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    margin-top: 3px;
+    padding-left: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ─── Stalled / Blocked card borders ─── */
+  .ac.stalled { border-color: rgba(255,215,64,0.3); }
+  .ac.blocked-card { border-color: rgba(255,82,82,0.3); }
+
+  .ac-stalled-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--yellow);
+    margin-top: 3px;
+    padding-left: 15px;
+  }
+
+  /* ─── De-boarded section ─── */
+  .sb-section-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 8px 12px 4px;
+  }
+
+  .abtn-remove {
+    color: var(--red);
+    border-color: rgba(255,82,82,0.25);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .abtn-remove:hover {
+    background: var(--red-dim);
+    border-color: var(--red);
+    box-shadow: 0 0 8px rgba(255,82,82,0.15);
+  }
 </style>
 </head>
 <body>
@@ -998,11 +1124,15 @@ function connect() {
     else if (d.type === 'membership') { if (agentData[d.agent]) agentData[d.agent].in_room = d.in_room; renderAgents(); }
     else if (d.type === 'agent_created') {
       const a = d.agent;
-      // Add to roster if not already present
       if (!agentRoster.find(x => x.name === a.name)) {
         agentRoster.push({ name: a.name, role: a.role, dynamic: true });
       }
       agentData[a.name] = { presence: a.presence || 'offline', activity: a.activity || null, in_room: a.in_room !== false, dynamic: true };
+      renderAgents();
+    }
+    else if (d.type === 'agent_removed') {
+      agentRoster = agentRoster.filter(x => x.name !== d.agent);
+      delete agentData[d.agent];
       renderAgents();
     }
   };
@@ -1084,67 +1214,99 @@ function renderAgents() {
   sep.className = 'ac-sep';
   $agents.appendChild(sep);
 
+  // Split agents into active and de-boarded
+  const activeAgents = [];
+  const deboardedAgents = [];
   agentRoster.forEach(a => {
+    const d = agentData[a.name] || {};
+    const inRoom = d.in_room !== undefined ? d.in_room : true;
+    if (inRoom) activeAgents.push(a);
+    else deboardedAgents.push(a);
+  });
+
+  // ── ACTIVE AGENTS ──
+  activeAgents.forEach(a => {
     const d = agentData[a.name] || {};
     const presence = d.presence || 'offline';
     const activity = d.activity || null;
-    const inRoom = d.in_room !== undefined ? d.in_room : true;
     const role = shortRole(a.role, a.name);
-    const deboarded = !inRoom;
+    const task = d.task || null;
+    const progress = d.progress != null ? d.progress : null;
+    const eta = d.eta || null;
+    const blockedBy = d.blocked_by || null;
+    const blockedReason = d.blocked_reason || null;
+    const stalled = d.stalled || false;
+    const stalledMin = d.stalled_minutes || 0;
+    const owns = d.owns || [];
+    const lastCommit = d.last_commit || null;
+    const isDynamic = a.dynamic || d.dynamic || false;
 
-    if (inRoom && presence !== 'offline') inCount++;
+    if (presence !== 'offline') inCount++;
+
+    let cardClass = 'ac';
+    if (blockedBy) cardClass = 'ac blocked-card';
+    else if (stalled) cardClass = 'ac stalled';
 
     const card = document.createElement('div');
-    card.className = deboarded ? 'ac off' : 'ac';
+    card.className = cardClass;
 
-    // Status badge — only show for non-idle states (idle is the default, showing it is noise)
-    let stClass = '', stText = '';
-    if (deboarded) { stClass = 'st-deboarded'; stText = 'de-boarded'; }
-    else if (presence === 'busy') { stClass = 'st-busy'; stText = 'working'; }
-    else if (presence === 'typing') { stClass = 'st-typing'; stText = 'thinking'; }
-    else if (presence === 'session') { stClass = 'st-session'; stText = 'no claude'; }
-    else if (presence === 'offline') { stClass = 'st-offline'; stText = 'offline'; }
-    // active/idle: no badge — the green dot is enough
+    let dotClass = blockedBy ? 'offline' : (stalled ? 'busy' : presence);
 
-    // Action buttons — ALWAYS visible
-    let btns = '';
-    if (deboarded) {
-      btns = `<button class="abtn abtn-on" data-action="reboard" data-agent="${a.name}" title="Re-board this agent">+ rejoin</button>`;
-    } else {
-      btns = `
-        <button class="abtn abtn-cli" data-action="attach" data-agent="${a.name}" title="Open CLI in Terminal">cli</button>
-        <button class="abtn abtn-msg" data-action="msg" data-agent="${a.name}" title="Direct message">@</button>
-        <button class="abtn abtn-off" data-action="deboard" data-agent="${a.name}" title="De-board from room">x</button>
-      `;
+    let stBadge = '';
+    if (blockedBy) stBadge = '<span class="ac-status st-deboarded">blocked</span>';
+    else if (stalled) stBadge = `<span class="ac-status st-busy">stalled ${stalledMin}m</span>`;
+    else if (presence === 'busy') stBadge = '<span class="ac-status st-busy">working</span>';
+    else if (presence === 'typing') stBadge = '<span class="ac-status st-typing">thinking</span>';
+    else if (presence === 'offline') stBadge = '<span class="ac-status st-offline">offline</span>';
+
+    const btns = `
+      <button class="abtn abtn-cli" data-action="attach" data-agent="${a.name}" title="Open CLI in Terminal">cli</button>
+      <button class="abtn abtn-msg" data-action="msg" data-agent="${a.name}" title="Direct message">@</button>
+      <button class="abtn abtn-off" data-action="deboard" data-agent="${a.name}" title="De-board from room">x</button>
+    `;
+
+    let actLine = '';
+    if (task) actLine = `<div class="ac-activity">${esc(task)}</div>`;
+    else if (activity) actLine = `<div class="ac-activity ${presence === 'typing' ? 'tp' : ''}">${esc(activity)}</div>`;
+
+    let progressHtml = '';
+    if (progress != null) {
+      const etaText = eta ? ` · ~${esc(eta)}` : '';
+      progressHtml = `<div class="ac-progress"><div class="ac-progress-bar"><div class="ac-progress-fill" style="width:${progress}%"></div></div><span class="ac-progress-text">${progress}%${etaText}</span></div>`;
     }
 
-    // Activity row
-    let actHtml = '';
-    if (!deboarded && activity) {
-      const actCls = presence === 'typing' ? 'ac-activity tp' : 'ac-activity';
-      actHtml = `<div class="${actCls}">${esc(activity)}</div>`;
+    let blockerHtml = '';
+    if (blockedBy) blockerHtml = `<div class="ac-blocker">⚠ blocked: ${esc(blockedReason || blockedBy)}</div>`;
+
+    let stalledHtml = '';
+    if (stalled && !blockedBy) stalledHtml = `<div class="ac-stalled-text">${stalledMin}m+ on same file</div>`;
+
+    let ownsHtml = '';
+    if (owns.length > 0) {
+      const shown = owns.slice(0, 3).map(f => `<span class="ac-own-pill">${esc(f)}</span>`).join('');
+      const more = owns.length > 3 ? `<span class="ac-own-more">+${owns.length - 3}</span>` : '';
+      ownsHtml = `<div class="ac-owns" title="${esc(owns.join(', '))}">${shown}${more}</div>`;
     }
 
-    const isDynamic = a.dynamic || (agentData[a.name] && agentData[a.name].dynamic);
+    let commitHtml = '';
+    if (lastCommit) commitHtml = `<div class="ac-commit">${esc(lastCommit.hash)} ${esc(lastCommit.message)}</div>`;
+
     const dynBadge = isDynamic ? '<span class="ac-dynamic" title="Dynamic agent">~</span>' : '';
 
     card.innerHTML = `
       <div class="ac-row1">
-        <span class="dot ${deboarded ? 'session' : presence}"></span>
+        <span class="dot ${dotClass}"></span>
         <span class="ac-name" style="color:${color(a.name)}">${a.name}${dynBadge}</span>
         <div class="ac-actions">${btns}</div>
       </div>
       <div class="ac-row2">
         <span class="ac-role" title="${esc(a.role || '')}">${role}</span>
-        ${stText ? `<span class="ac-status ${stClass}">${stText}</span>` : ''}
+        ${stBadge}
       </div>
-      ${actHtml}
+      ${actLine}${progressHtml}${blockerHtml}${stalledHtml}${ownsHtml}${commitHtml}
     `;
 
-    // Click name → set target
     card.querySelector('.ac-name').onclick = (e) => { e.stopPropagation(); $target.value = a.name; $input.focus(); };
-
-    // Action button handlers
     card.querySelectorAll('.abtn[data-action]').forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
@@ -1152,13 +1314,67 @@ function renderAgents() {
         const agent = btn.dataset.agent;
         if (action === 'attach') fetch(`/api/agents/${agent}/attach`, { method: 'POST' });
         else if (action === 'deboard') fetch(`/api/agents/${agent}/deboard`, { method: 'POST' });
-        else if (action === 'reboard') fetch(`/api/agents/${agent}/reboard`, { method: 'POST' });
         else if (action === 'msg') { $target.value = agent; $input.focus(); }
       };
     });
 
     $agents.appendChild(card);
   });
+
+  // ── DE-BOARDED SECTION ──
+  if (deboardedAgents.length > 0) {
+    const deSep = document.createElement('div');
+    deSep.className = 'ac-sep';
+    $agents.appendChild(deSep);
+
+    const deHeader = document.createElement('div');
+    deHeader.className = 'sb-section-head';
+    deHeader.textContent = `De-boarded (${deboardedAgents.length})`;
+    $agents.appendChild(deHeader);
+
+    deboardedAgents.forEach(a => {
+      const role = shortRole(a.role, a.name);
+      const isDynamic = a.dynamic || (agentData[a.name] && agentData[a.name].dynamic) || false;
+      const dynBadge = isDynamic ? '<span class="ac-dynamic" title="Dynamic agent">~</span>' : '';
+
+      const card = document.createElement('div');
+      card.className = 'ac off';
+      card.innerHTML = `
+        <div class="ac-row1">
+          <span class="dot session"></span>
+          <span class="ac-name" style="color:${color(a.name)}">${a.name}${dynBadge}</span>
+          <div class="ac-actions">
+            <button class="abtn abtn-on" data-action="reboard" data-agent="${a.name}" title="Re-join the war room">+ rejoin</button>
+            <button class="abtn abtn-remove" data-action="remove" data-agent="${a.name}" title="Kill session and remove permanently">remove</button>
+          </div>
+        </div>
+        <div class="ac-row2">
+          <span class="ac-role" title="${esc(a.role || '')}">${role}</span>
+          <span class="ac-status st-deboarded">de-boarded</span>
+        </div>
+      `;
+
+      card.querySelectorAll('.abtn[data-action]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const action = btn.dataset.action;
+          const agent = btn.dataset.agent;
+          if (action === 'reboard') fetch(`/api/agents/${agent}/reboard`, { method: 'POST' });
+          else if (action === 'remove') {
+            if (confirm(`Remove ${agent} permanently? This will kill the tmux session.`)) {
+              fetch(`/api/agents/${agent}/remove`, { method: 'DELETE' }).then(() => {
+                agentRoster = agentRoster.filter(r => r.name !== agent);
+                delete agentData[agent];
+                renderAgents();
+              });
+            }
+          }
+        };
+      });
+
+      $agents.appendChild(card);
+    });
+  }
 
   // Update count
   $count.textContent = `${inCount} / ${agentRoster.length + 1}`;

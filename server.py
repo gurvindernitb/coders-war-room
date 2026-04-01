@@ -751,6 +751,42 @@ async def get_agent_owns(agent_name: str):
     }
 
 
+@app.delete("/api/agents/{agent_name}/remove")
+async def agent_remove(agent_name: str):
+    """Permanently remove an agent: kill tmux session, remove from roster, free the name."""
+    if agent_name not in AGENT_NAMES:
+        return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
+
+    session = AGENT_SESSIONS.get(agent_name, f"warroom-{agent_name}")
+
+    # Kill tmux session
+    subprocess.run(["tmux", "kill-session", "-t", session], capture_output=True, timeout=5)
+
+    # Remove from all in-memory stores
+    AGENT_NAMES.discard(agent_name)
+    AGENT_SESSIONS.pop(agent_name, None)
+    AGENT_DIRS.pop(agent_name, None)
+    agent_membership.pop(agent_name, None)
+    agent_manual_status.pop(agent_name, None)
+    agent_last_state.pop(agent_name, None)
+    agent_last_commit.pop(agent_name, None)
+    agent_owns_resolved.pop(agent_name, None)
+    agent_queues.pop(agent_name, None)
+
+    # Remove from AGENTS list
+    for i, a in enumerate(AGENTS):
+        if a["name"] == agent_name:
+            AGENTS.pop(i)
+            break
+
+    # Announce
+    saved = await save_message("system", "all", f"{agent_name} has been permanently removed", "system")
+    await broadcast_ws({"type": "message", "message": saved})
+    await broadcast_ws({"type": "agent_removed", "agent": agent_name})
+
+    return {"status": "removed", "agent": agent_name}
+
+
 @app.post("/api/agents/{agent_name}/deboard")
 async def agent_deboard(agent_name: str):
     """De-board: stop message delivery, keep session alive."""
