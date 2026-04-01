@@ -253,6 +253,7 @@ function getColor(name) {
 
 let ws = null;
 let agentStatus = {};
+let agentRoster = [];
 
 const messagesEl = document.getElementById('messages');
 const msgInput = document.getElementById('msgInput');
@@ -325,32 +326,50 @@ function renderMessage(msg) {
   messagesEl.appendChild(div);
 }
 
+function shortRole(role) {
+  // Extract a short label from the role string (first phrase before the dash or period)
+  if (!role) return '';
+  const m = role.match(/^Phase \d+[AB]?:\s*([^—–\-\.]+)/);
+  return m ? m[1].trim() : '';
+}
+
 function renderAgentList() {
-  const allNames = ['gurvinder', 'supervisor', 'phase-1', 'phase-2', 'phase-3',
-                     'phase-4', 'phase-5', 'phase-6', 'git-agent'];
   agentList.innerHTML = '';
 
-  allNames.forEach(name => {
-    const isOnline = name === 'gurvinder' ? true : !!agentStatus[name];
+  // Gurvinder always first
+  const gurvDiv = document.createElement('div');
+  gurvDiv.className = 'agent-item';
+  gurvDiv.innerHTML = `
+    <span class="agent-dot online"></span>
+    <span class="agent-name" style="color: ${getColor('gurvinder')}">gurvinder</span>
+  `;
+  gurvDiv.onclick = () => { targetSelect.value = 'all'; msgInput.focus(); };
+  agentList.appendChild(gurvDiv);
+
+  // Agents from roster (fetched from API)
+  agentRoster.forEach(agent => {
+    const isOnline = !!agentStatus[agent.name];
+    const label = shortRole(agent.role);
     const div = document.createElement('div');
     div.className = 'agent-item';
     div.innerHTML = `
       <span class="agent-dot ${isOnline ? 'online' : 'offline'}"></span>
-      <span class="agent-name" style="color: ${getColor(name)}">${name}</span>
+      <span style="display:flex;flex-direction:column;gap:1px">
+        <span class="agent-name" style="color: ${getColor(agent.name)}">${agent.name}</span>
+        ${label ? `<span style="font-size:10px;color:#8b949e">${label}</span>` : ''}
+      </span>
     `;
-    div.onclick = () => {
-      targetSelect.value = name === 'gurvinder' ? 'all' : name;
-      msgInput.focus();
-    };
+    div.onclick = () => { targetSelect.value = agent.name; msgInput.focus(); };
     agentList.appendChild(div);
   });
 
+  // Populate target dropdown
   const current = targetSelect.value;
   targetSelect.innerHTML = '<option value="all">@all</option>';
-  allNames.filter(n => n !== 'gurvinder').forEach(name => {
+  agentRoster.forEach(agent => {
     const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = `@${name}`;
+    opt.value = agent.name;
+    opt.textContent = `@${agent.name}`;
     targetSelect.appendChild(opt);
   });
   targetSelect.value = current || 'all';
@@ -405,8 +424,12 @@ msgInput.addEventListener('keydown', (e) => {
 
 sendBtn.addEventListener('click', sendMessage);
 
+// Fetch agent roster from API, then connect
+fetch('/api/agents')
+  .then(r => r.json())
+  .then(agents => { agentRoster = agents; renderAgentList(); })
+  .catch(() => { /* server not ready yet, WebSocket will trigger re-render */ });
 connect();
-renderAgentList();
 </script>
 </body>
 </html>
