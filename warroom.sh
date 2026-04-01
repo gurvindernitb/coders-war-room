@@ -148,12 +148,20 @@ case "$1" in
             echo "Error: No session '$SESSION'. Agent not onboarded."
             exit 1
         fi
-        # Pop out into a new Terminal window
-        osascript -e "tell application \"Terminal\"
-            activate
-            do script \"tmux attach -t $SESSION\"
-        end tell" 2>/dev/null && echo "Opened $AGENT in Terminal.app" || \
-        echo "Could not open Terminal. Manual: tmux attach -t $SESSION"
+        # Create launcher script
+        LAUNCHER="/tmp/warroom-attach-${AGENT}.sh"
+        echo "#!/bin/bash" > "$LAUNCHER"
+        echo "tmux attach -t $SESSION" >> "$LAUNCHER"
+        chmod +x "$LAUNCHER"
+        # Try Warp first, fall back to Terminal.app
+        if [ -d "/Applications/Warp.app" ]; then
+            open -a Warp "$LAUNCHER" && echo "Opened $AGENT in Warp"
+        else
+            osascript -e "tell application \"Terminal\"
+                activate
+                do script \"tmux attach -t $SESSION\"
+            end tell" 2>/dev/null && echo "Opened $AGENT in Terminal.app"
+        fi || echo "Manual: tmux attach -t $SESSION"
         ;;
     *)
         echo "Coder's War Room — Agent CLI"

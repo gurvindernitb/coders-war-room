@@ -439,18 +439,27 @@ async def agent_reboard(agent_name: str):
 
 @app.post("/api/agents/{agent_name}/attach")
 async def agent_attach(agent_name: str):
-    """Pop out an agent's Claude Code session into a new Terminal.app window."""
+    """Pop out an agent's Claude Code session into a new terminal window."""
     if agent_name not in AGENT_NAMES:
         return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
     session = AGENT_SESSIONS.get(agent_name)
     if not tmux_session_exists(session):
         return JSONResponse({"error": f"No tmux session for {agent_name}"}, status_code=404)
     try:
-        subprocess.run(
-            ["osascript", "-e",
-             f'tell application "Terminal"\n  activate\n  do script "tmux attach -t {session}"\nend tell'],
-            capture_output=True, timeout=5,
-        )
+        # Create a launcher script for this agent
+        launcher = Path(f"/tmp/warroom-attach-{agent_name}.sh")
+        launcher.write_text(f"#!/bin/bash\ntmux attach -t {session}\n")
+        launcher.chmod(0o755)
+        # Try Warp first, fall back to Terminal.app
+        warp = Path("/Applications/Warp.app")
+        if warp.exists():
+            subprocess.run(["open", "-a", "Warp", str(launcher)], capture_output=True, timeout=5)
+        else:
+            subprocess.run(
+                ["osascript", "-e",
+                 f'tell application "Terminal"\n  activate\n  do script "tmux attach -t {session}"\nend tell'],
+                capture_output=True, timeout=5,
+            )
         return {"status": "attached", "agent": agent_name, "session": session}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
