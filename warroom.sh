@@ -119,6 +119,104 @@ reboard_agent() {
     fi
 }
 
+status_cmd() {
+    local task=""
+    local progress=""
+    local eta=""
+    local blocked=""
+    local blocked_reason=""
+    local show=false
+    local clear=false
+    local unblocked=false
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --progress) progress="$2"; shift 2 ;;
+            --eta) eta="$2"; shift 2 ;;
+            --blocked)
+                blocked="$2"; shift 2
+                blocked_reason="$*"; break ;;
+            --unblocked) unblocked=true; shift ;;
+            --show) show=true; shift ;;
+            --clear) clear=true; shift ;;
+            *) task="$1"; shift ;;
+        esac
+    done
+
+    if [ "$show" = true ]; then
+        curl -s "$WARROOM_SERVER/api/agents/$WARROOM_AGENT/status" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f\"Agent:    {d.get('name', '?')}\")
+print(f\"Presence: {d.get('presence', '?')}\")
+if d.get('activity'): print(f\"Activity: {d['activity']}\")
+if d.get('task'): print(f\"Task:     {d['task']}\")
+if d.get('progress') is not None: print(f\"Progress: {d['progress']}%\")
+if d.get('eta'): print(f\"ETA:      {d['eta']}\")
+if d.get('blocked_by'): print(f\"BLOCKED:  by {d['blocked_by']} — {d.get('blocked_reason', '')}\")
+if d.get('stalled'): print(f\"STALLED:  {d.get('stalled_minutes', 0)}m on same file\")
+if d.get('owns'): print(f\"Owns:     {', '.join(d['owns'][:5])}{'...' if len(d.get('owns',[])) > 5 else ''}\")
+if d.get('last_commit'): print(f\"Commit:   {d['last_commit']['hash']} {d['last_commit']['message']}\")
+"
+        return
+    fi
+
+    if [ "$clear" = true ]; then
+        curl -s -X POST "$WARROOM_SERVER/api/agents/$WARROOM_AGENT/status" \
+            -H "Content-Type: application/json" \
+            -d '{"clear": true}' > /dev/null
+        echo "Status cleared"
+        return
+    fi
+
+    if [ "$unblocked" = true ]; then
+        curl -s -X POST "$WARROOM_SERVER/api/agents/$WARROOM_AGENT/status" \
+            -H "Content-Type: application/json" \
+            -d '{"blocked_by": null, "blocked_reason": null}' > /dev/null
+        echo "Blocker cleared"
+        return
+    fi
+
+    # Build JSON payload
+    local payload="{"
+    local sep=""
+    if [ -n "$task" ]; then
+        local escaped_task
+        escaped_task=$(printf '%s' "$task" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+        payload="${payload}${sep}\"task\": $escaped_task"
+        sep=", "
+    fi
+    if [ -n "$progress" ]; then
+        payload="${payload}${sep}\"progress\": $progress"
+        sep=", "
+    fi
+    if [ -n "$eta" ]; then
+        payload="${payload}${sep}\"eta\": \"$eta\""
+        sep=", "
+    fi
+    if [ -n "$blocked" ]; then
+        local escaped_reason
+        escaped_reason=$(printf '%s' "$blocked_reason" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+        payload="${payload}${sep}\"blocked_by\": \"$blocked\", \"blocked_reason\": $escaped_reason"
+        sep=", "
+    fi
+    payload="${payload}}"
+
+    if [ "$payload" = "{}" ]; then
+        echo "Usage: warroom.sh status 'task' [--progress N] [--eta Nm]"
+        echo "       warroom.sh status --blocked <agent> 'reason'"
+        echo "       warroom.sh status --unblocked"
+        echo "       warroom.sh status --clear"
+        echo "       warroom.sh status --show"
+        return
+    fi
+
+    curl -s -X POST "$WARROOM_SERVER/api/agents/$WARROOM_AGENT/status" \
+        -H "Content-Type: application/json" \
+        -d "$payload" > /dev/null
+    echo "Status updated"
+}
+
 case "$1" in
     post)
         shift
@@ -131,6 +229,10 @@ case "$1" in
     mentions)
         shift
         show_mentions "$@"
+        ;;
+    status)
+        shift
+        status_cmd "$@"
         ;;
     deboard)
         shift
@@ -179,6 +281,11 @@ LAUNCH_EOF
         echo "  warroom.sh post [--to agent] message   Send a message"
         echo "  warroom.sh history [--count N]          Show all recent messages"
         echo "  warroom.sh mentions [--count N]         Show messages for me + @all"
+        echo "  warroom.sh status 'task' [--progress N] [--eta Nm]  Set status"
+        echo "  warroom.sh status --blocked <agent> 'reason'        Set blocker"
+        echo "  warroom.sh status --unblocked                       Clear blocker"
+        echo "  warroom.sh status --clear                           Clear all status"
+        echo "  warroom.sh status --show                            Show your card"
         echo "  warroom.sh deboard [agent]               Leave war room (keep working)"
         echo "  warroom.sh reboard [agent]               Rejoin the war room"
         echo "  warroom.sh attach <agent>                Pop out agent in Terminal.app"
