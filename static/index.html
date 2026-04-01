@@ -5,33 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>War Room</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg-deep: #0a0c10;
-    --bg-panel: #0f1218;
-    --bg-card: #141920;
-    --bg-hover: #1a2030;
-    --border: #1e2736;
-    --border-bright: #2a3548;
-    --text-primary: #d4dae4;
-    --text-secondary: #6b7a8d;
-    --text-dim: #3d4a5c;
-    --accent-green: #00e676;
-    --accent-yellow: #ffd740;
-    --accent-orange: #ff9100;
-    --accent-red: #ff5252;
-    --accent-blue: #448aff;
-    --accent-purple: #b388ff;
-    --accent-pink: #ff80ab;
-    --accent-cyan: #18ffff;
+    --bg-void: #060810;
+    --bg-deep: #0a0d14;
+    --bg-panel: #0e1119;
+    --bg-card: #121620;
+    --bg-card-hover: #171c28;
+    --bg-elevated: #1a2030;
+    --border: #1a2030;
+    --border-bright: #243044;
+    --text-primary: #d8dee8;
+    --text-secondary: #7a8a9e;
+    --text-dim: #3e4e64;
+    --green: #00e676;
+    --green-dim: rgba(0,230,118,0.12);
+    --yellow: #ffd740;
+    --yellow-dim: rgba(255,215,64,0.10);
+    --cyan: #18ffff;
+    --cyan-dim: rgba(24,255,255,0.10);
+    --orange: #ff9100;
+    --orange-dim: rgba(255,145,0,0.08);
+    --red: #ff5252;
+    --red-dim: rgba(255,82,82,0.08);
+    --blue: #448aff;
+    --blue-dim: rgba(68,138,255,0.10);
+    --purple: #b388ff;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'DM Sans', -apple-system, sans-serif;
-    background: var(--bg-deep);
+    font-family: 'Outfit', -apple-system, sans-serif;
+    background: var(--bg-void);
     color: var(--text-primary);
     height: 100vh;
     display: flex;
@@ -39,7 +46,7 @@
     overflow: hidden;
   }
 
-  /* ═══════════════ HEADER ═══════════════ */
+  /* ═══════════ HEADER ═══════════ */
   header {
     background: var(--bg-panel);
     border-bottom: 1px solid var(--border);
@@ -50,250 +57,243 @@
     flex-shrink: 0;
   }
 
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
+  .h-left { display: flex; align-items: center; gap: 12px; }
 
-  .header-logo {
+  .h-logo {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: 3px;
+    letter-spacing: 4px;
     text-transform: uppercase;
-    color: var(--accent-green);
-    text-shadow: 0 0 20px rgba(0,230,118,0.15);
+    color: var(--green);
+    text-shadow: 0 0 24px rgba(0,230,118,0.12);
   }
 
-  .header-divider {
-    width: 1px;
-    height: 16px;
-    background: var(--border-bright);
-  }
+  .h-sep { width: 1px; height: 14px; background: var(--border-bright); }
 
-  .header-subtitle {
+  .h-sub {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
     color: var(--text-dim);
     letter-spacing: 1px;
   }
 
-  .conn-badge {
+  .conn {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    padding: 4px 12px;
+    font-size: 9px;
+    padding: 3px 10px;
     border-radius: 3px;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
   }
 
-  .conn-badge.on {
-    color: var(--accent-green);
-    background: rgba(0,230,118,0.08);
-    border: 1px solid rgba(0,230,118,0.2);
-  }
+  .conn.on { color: var(--green); background: var(--green-dim); border: 1px solid rgba(0,230,118,0.25); }
+  .conn.off { color: var(--red); background: var(--red-dim); border: 1px solid rgba(255,82,82,0.25); animation: blink 2s infinite; }
+  @keyframes blink { 50% { opacity: 0.4; } }
 
-  .conn-badge.off {
-    color: var(--accent-red);
-    background: rgba(255,82,82,0.08);
-    border: 1px solid rgba(255,82,82,0.2);
-    animation: pulse-red 2s ease-in-out infinite;
-  }
+  /* ═══════════ LAYOUT ═══════════ */
+  .main { display: flex; flex: 1; overflow: hidden; }
 
-  @keyframes pulse-red {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  /* ═══════════════ MAIN LAYOUT ═══════════════ */
-  .main {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  /* ═══════════════ SIDEBAR ═══════════════ */
+  /* ═══════════ SIDEBAR ═══════════ */
   .sidebar {
-    width: 260px;
-    background: var(--bg-panel);
+    width: 300px;
+    background: var(--bg-deep);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
   }
 
-  .sidebar-header {
-    padding: 14px 16px 10px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--text-dim);
+  .sb-head {
+    padding: 12px 16px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     border-bottom: 1px solid var(--border);
   }
 
-  .agent-list {
+  .sb-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .sb-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    background: var(--bg-card);
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+
+  .agents {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 6px 8px;
   }
 
-  .agent-card {
+  /* ─── Agent Card ─── */
+  .ac {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     padding: 10px 12px;
-    border-radius: 6px;
-    margin-bottom: 4px;
-    cursor: pointer;
-    transition: background 0.15s;
-    position: relative;
+    margin-bottom: 6px;
+    transition: border-color 0.2s, background 0.2s;
   }
 
-  .agent-card:hover { background: var(--bg-hover); }
-
-  .agent-card.deboarded {
-    opacity: 0.35;
+  .ac:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-bright);
   }
 
-  .agent-card-top {
+  .ac.off {
+    opacity: 0.3;
+    border-style: dashed;
+  }
+
+  /* Row 1: dot + name + action buttons */
+  .ac-row1 {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
 
-  .presence-dot {
-    width: 8px;
-    height: 8px;
+  .dot {
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
-    transition: all 0.3s;
   }
 
-  .presence-dot.active {
-    background: var(--accent-green);
-    box-shadow: 0 0 6px rgba(0,230,118,0.4);
-  }
+  .dot.active { background: var(--green); box-shadow: 0 0 8px rgba(0,230,118,0.5); }
+  .dot.busy { background: var(--yellow); box-shadow: 0 0 8px rgba(255,215,64,0.4); animation: glow-y 1.2s ease-in-out infinite; }
+  .dot.typing { background: var(--cyan); box-shadow: 0 0 8px rgba(24,255,255,0.4); animation: pulse-c 0.8s ease-in-out infinite; }
+  .dot.session { background: var(--text-dim); }
+  .dot.offline { background: #555; }
 
-  .presence-dot.busy {
-    background: var(--accent-yellow);
-    box-shadow: 0 0 6px rgba(255,215,64,0.3);
-    animation: spin-busy 1.5s linear infinite;
-  }
+  @keyframes glow-y { 50% { box-shadow: 0 0 14px rgba(255,215,64,0.7); } }
+  @keyframes pulse-c { 50% { transform: scale(1.4); opacity: 0.7; } }
 
-  .presence-dot.typing {
-    background: var(--accent-cyan);
-    box-shadow: 0 0 6px rgba(24,255,255,0.3);
-    animation: pulse-type 1s ease-in-out infinite;
-  }
-
-  .presence-dot.session {
-    background: var(--text-dim);
-  }
-
-  .presence-dot.offline {
-    background: var(--accent-red);
-    opacity: 0.4;
-  }
-
-  @keyframes spin-busy {
-    0% { box-shadow: 0 0 4px rgba(255,215,64,0.2); }
-    50% { box-shadow: 0 0 8px rgba(255,215,64,0.5); }
-    100% { box-shadow: 0 0 4px rgba(255,215,64,0.2); }
-  }
-
-  @keyframes pulse-type {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.3); }
-  }
-
-  .agent-name {
+  .ac-name {
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     font-weight: 600;
     flex: 1;
+    cursor: pointer;
   }
 
-  .agent-btn-row {
+  .ac-name:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+  .ac-actions {
     display: flex;
     gap: 4px;
-    opacity: 0;
-    transition: opacity 0.15s;
+    flex-shrink: 0;
   }
 
-  .agent-card:hover .agent-btn-row { opacity: 1; }
-
-  .agent-board-btn, .agent-cli-btn {
+  .abtn {
     font-family: 'JetBrains Mono', monospace;
     font-size: 9px;
-    padding: 2px 8px;
-    border-radius: 3px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 4px;
     border: 1px solid var(--border-bright);
     background: transparent;
-    color: var(--text-secondary);
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+    transition: all 0.15s;
+    white-space: nowrap;
   }
 
-  .agent-board-btn:hover {
-    color: var(--accent-red);
-    border-color: var(--accent-red);
+  .abtn-cli {
+    color: var(--blue);
+    border-color: rgba(68,138,255,0.3);
+  }
+  .abtn-cli:hover {
+    background: var(--blue-dim);
+    border-color: var(--blue);
+    box-shadow: 0 0 8px rgba(68,138,255,0.15);
   }
 
-  .agent-board-btn.reboard:hover {
-    color: var(--accent-green);
-    border-color: var(--accent-green);
-  }
-
-  .agent-cli-btn {
-    border: 1px solid var(--border-bright);
-    background: transparent;
+  .abtn-msg {
     color: var(--text-secondary);
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    border-color: var(--border-bright);
+  }
+  .abtn-msg:hover {
+    color: var(--green);
+    border-color: rgba(0,230,118,0.3);
+    background: var(--green-dim);
   }
 
-  .agent-cli-btn:hover {
-    color: var(--accent-blue);
-    border-color: var(--accent-blue);
+  .abtn-off {
+    color: var(--text-dim);
+    border-color: var(--border);
+  }
+  .abtn-off:hover {
+    color: var(--red);
+    border-color: rgba(255,82,82,0.4);
+    background: var(--red-dim);
   }
 
-  .agent-meta {
-    margin-top: 4px;
-    padding-left: 18px;
+  .abtn-on {
+    color: var(--green);
+    border-color: rgba(0,230,118,0.3);
+  }
+  .abtn-on:hover {
+    background: var(--green-dim);
+    border-color: var(--green);
+  }
+
+  /* Row 2: role + status */
+  .ac-row2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 5px;
+    padding-left: 15px;
+  }
+
+  .ac-role {
     font-size: 10px;
-    line-height: 1.4;
-  }
-
-  .agent-role {
     color: var(--text-secondary);
+    font-weight: 400;
   }
 
-  .agent-activity {
-    color: var(--accent-yellow);
+  .ac-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .st-active { color: var(--green); background: var(--green-dim); }
+  .st-busy { color: var(--yellow); background: var(--yellow-dim); }
+  .st-typing { color: var(--cyan); background: var(--cyan-dim); }
+  .st-session { color: var(--text-dim); background: rgba(62,78,100,0.2); }
+  .st-offline { color: #666; background: rgba(100,100,100,0.1); }
+  .st-deboarded { color: var(--red); background: var(--red-dim); }
+
+  /* Row 3: activity (only when busy/typing) */
+  .ac-activity {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
-    margin-top: 2px;
+    margin-top: 4px;
+    padding-left: 15px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: var(--yellow);
   }
 
-  .agent-activity.typing { color: var(--accent-cyan); }
+  .ac-activity.tp { color: var(--cyan); }
 
-  /* ═══════════════ CHAT ═══════════════ */
-  .chat {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--bg-deep);
-  }
+  /* ═══════════ CHAT ═══════════ */
+  .chat { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
-  .messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px 24px;
-  }
+  .messages { flex: 1; overflow-y: auto; padding: 16px 24px; }
 
   .msg {
     margin-bottom: 10px;
@@ -301,66 +301,22 @@
     border-radius: 6px;
     background: var(--bg-card);
     border-left: 3px solid var(--border);
-    animation: msg-in 0.2s ease-out;
+    animation: fadein 0.15s ease-out;
   }
 
-  @keyframes msg-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes fadein { from { opacity: 0; transform: translateY(3px); } }
 
-  .msg.direct {
-    background: rgba(255,145,0,0.05);
-    border-left-color: var(--accent-orange);
-  }
+  .msg.direct { background: var(--orange-dim); border-left-color: var(--orange); }
+  .msg.system { background: transparent; border-left: none; color: var(--text-dim); font-style: italic; font-size: 11px; padding: 3px 14px; animation: none; }
 
-  .msg.system {
-    background: transparent;
-    border-left: none;
-    color: var(--text-dim);
-    font-style: italic;
-    font-size: 11px;
-    padding: 3px 14px;
-    animation: none;
-  }
+  .msg-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
 
-  .msg-head {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    margin-bottom: 3px;
-  }
+  .msg-sender { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 12px; }
+  .msg-tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--orange); background: var(--orange-dim); padding: 1px 6px; border-radius: 3px; }
+  .msg-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-dim); }
+  .msg-body { font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 
-  .msg-sender {
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 600;
-    font-size: 12px;
-  }
-
-  .msg-tag {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: var(--accent-orange);
-    background: rgba(255,145,0,0.1);
-    padding: 1px 6px;
-    border-radius: 3px;
-  }
-
-  .msg-time {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: var(--text-dim);
-  }
-
-  .msg-body {
-    font-size: 13px;
-    line-height: 1.55;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: var(--text-primary);
-  }
-
-  /* ═══════════════ INPUT ═══════════════ */
+  /* ═══════════ INPUT ═══════════ */
   .input-bar {
     background: var(--bg-panel);
     border-top: 1px solid var(--border);
@@ -381,12 +337,11 @@
     border-radius: 4px;
     cursor: pointer;
   }
-
-  .target-sel:focus { border-color: var(--accent-blue); outline: none; }
+  .target-sel:focus { border-color: var(--blue); outline: none; }
 
   .msg-input {
     flex: 1;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Outfit', sans-serif;
     font-size: 13px;
     background: var(--bg-deep);
     border: 1px solid var(--border);
@@ -397,50 +352,49 @@
     min-height: 38px;
     max-height: 120px;
   }
-
-  .msg-input:focus { border-color: var(--accent-blue); outline: none; }
+  .msg-input:focus { border-color: var(--blue); outline: none; }
   .msg-input::placeholder { color: var(--text-dim); }
 
   .send-btn {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
-    background: var(--accent-green);
-    color: var(--bg-deep);
+    background: var(--green);
+    color: var(--bg-void);
     border: none;
     padding: 9px 20px;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: box-shadow 0.15s;
   }
-
-  .send-btn:hover { box-shadow: 0 0 12px rgba(0,230,118,0.3); }
+  .send-btn:hover { box-shadow: 0 0 16px rgba(0,230,118,0.25); }
   .send-btn:disabled { background: var(--border); color: var(--text-dim); box-shadow: none; cursor: default; }
 
-  /* scrollbar */
-  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="header-left">
-    <span class="header-logo">War Room</span>
-    <span class="header-divider"></span>
-    <span class="header-subtitle">North Star Daemon</span>
+  <div class="h-left">
+    <span class="h-logo">War Room</span>
+    <span class="h-sep"></span>
+    <span class="h-sub">North Star Daemon</span>
   </div>
-  <span id="connBadge" class="conn-badge off">offline</span>
+  <span id="connBadge" class="conn off">offline</span>
 </header>
 
 <div class="main">
   <aside class="sidebar">
-    <div class="sidebar-header">Agents</div>
-    <div id="agentList" class="agent-list"></div>
+    <div class="sb-head">
+      <span class="sb-title">Agents</span>
+      <span id="agentCount" class="sb-count">0 / 0</span>
+    </div>
+    <div id="agentList" class="agents"></div>
   </aside>
 
   <div class="chat">
@@ -466,104 +420,84 @@ const COLORS = {
   'git-agent':  '#ffd740',
 };
 
-const color = n => COLORS[n] || '#6b7a8d';
+const PRESENCE_LABELS = {
+  active:  'idle',
+  busy:    'working',
+  typing:  'thinking',
+  session: 'no claude',
+  offline: 'offline',
+};
+
+const color = n => COLORS[n] || '#7a8a9e';
 const esc = t => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
 
 let ws = null;
-let agentData = {};      // name -> {presence, activity, in_room}
-let agentRoster = [];    // from /api/agents
+let agentData = {};
+let agentRoster = [];
 
-const $msgs = document.getElementById('messages');
-const $input = document.getElementById('msgInput');
-const $send = document.getElementById('sendBtn');
-const $target = document.getElementById('targetSel');
-const $conn = document.getElementById('connBadge');
-const $agents = document.getElementById('agentList');
+const $ = id => document.getElementById(id);
+const $msgs = $('messages'), $input = $('msgInput'), $send = $('sendBtn');
+const $target = $('targetSel'), $conn = $('connBadge'), $agents = $('agentList'), $count = $('agentCount');
 
-// ═══════════════ WebSocket ═══════════════
+// ═══════════ WebSocket ═══════════
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws`);
-
-  ws.onopen = () => {
-    $conn.textContent = 'live';
-    $conn.className = 'conn-badge on';
-    $send.disabled = false;
-  };
-
-  ws.onclose = () => {
-    $conn.textContent = 'offline';
-    $conn.className = 'conn-badge off';
-    $send.disabled = true;
-    setTimeout(connect, 2000);
-  };
-
+  ws.onopen = () => { $conn.textContent = 'live'; $conn.className = 'conn on'; $send.disabled = false; };
+  ws.onclose = () => { $conn.textContent = 'offline'; $conn.className = 'conn off'; $send.disabled = true; setTimeout(connect, 2000); };
   ws.onerror = () => ws.close();
-
   ws.onmessage = (e) => {
     const d = JSON.parse(e.data);
-    if (d.type === 'history') {
-      $msgs.innerHTML = '';
-      d.messages.forEach(renderMsg);
-      scrollEnd();
-    } else if (d.type === 'message') {
-      renderMsg(d.message);
-      scrollEnd();
-    } else if (d.type === 'agent_status') {
-      // New format: d.agents = {name: {presence, activity, in_room}}
-      agentData = d.agents || {};
-      renderAgents();
-    } else if (d.type === 'membership') {
-      if (agentData[d.agent]) {
-        agentData[d.agent].in_room = d.in_room;
-      }
-      renderAgents();
-    }
+    if (d.type === 'history') { $msgs.innerHTML = ''; d.messages.forEach(renderMsg); scrollEnd(); }
+    else if (d.type === 'message') { renderMsg(d.message); scrollEnd(); }
+    else if (d.type === 'agent_status') { agentData = d.agents || {}; renderAgents(); }
+    else if (d.type === 'membership') { if (agentData[d.agent]) agentData[d.agent].in_room = d.in_room; renderAgents(); }
   };
 }
 
-// ═══════════════ Messages ═══════════════
+// ═══════════ Messages ═══════════
 function renderMsg(m) {
   const el = document.createElement('div');
-  const cls = m.type === 'system' ? 'msg system' : m.target !== 'all' ? 'msg direct' : 'msg';
-  el.className = cls;
-
-  if (m.type === 'system') {
-    el.textContent = m.content;
-  } else {
+  el.className = m.type === 'system' ? 'msg system' : m.target !== 'all' ? 'msg direct' : 'msg';
+  if (m.type === 'system') { el.textContent = m.content; }
+  else {
     const ts = m.timestamp ? m.timestamp.slice(11, 19) : '';
     const tag = m.target !== 'all' ? `<span class="msg-tag">@${esc(m.target)}</span>` : '';
-    el.innerHTML = `
-      <div class="msg-head">
-        <span class="msg-sender" style="color:${color(m.sender)}">${esc(m.sender)}</span>
-        ${tag}
-        <span class="msg-time">${ts}</span>
-      </div>
-      <div class="msg-body">${esc(m.content)}</div>
-    `;
+    el.innerHTML = `<div class="msg-head"><span class="msg-sender" style="color:${color(m.sender)}">${esc(m.sender)}</span>${tag}<span class="msg-time">${ts}</span></div><div class="msg-body">${esc(m.content)}</div>`;
   }
   $msgs.appendChild(el);
 }
 
-// ═══════════════ Agent Sidebar ═══════════════
+// ═══════════ Agent Sidebar ═══════════
 function shortRole(role) {
   if (!role) return '';
   const m = role.match(/^Phase \d+[AB]?:\s*([^—–\-\.]+)/);
-  return m ? m[1].trim() : '';
+  return m ? m[1].trim() : (role.length > 30 ? role.slice(0, 30) + '...' : role);
 }
 
 function renderAgents() {
   $agents.innerHTML = '';
+  let inCount = 0;
 
-  // Gurvinder
-  $agents.innerHTML += `
-    <div class="agent-card" onclick="document.getElementById('targetSel').value='all';document.getElementById('msgInput').focus()">
-      <div class="agent-card-top">
-        <span class="presence-dot active"></span>
-        <span class="agent-name" style="color:${color('gurvinder')}">gurvinder</span>
+  // Gurvinder — always first, always active
+  const gCard = document.createElement('div');
+  gCard.className = 'ac';
+  gCard.innerHTML = `
+    <div class="ac-row1">
+      <span class="dot active"></span>
+      <span class="ac-name" style="color:${color('gurvinder')}">gurvinder</span>
+      <div class="ac-actions">
+        <button class="abtn abtn-msg" title="Message @all">@all</button>
       </div>
     </div>
+    <div class="ac-row2">
+      <span class="ac-role">You</span>
+      <span class="ac-status st-active">online</span>
+    </div>
   `;
+  gCard.querySelector('.abtn-msg').onclick = () => { $target.value = 'all'; $input.focus(); };
+  $agents.appendChild(gCard);
+  inCount++;
 
   agentRoster.forEach(a => {
     const d = agentData[a.name] || {};
@@ -573,58 +507,69 @@ function renderAgents() {
     const role = shortRole(a.role);
     const deboarded = !inRoom;
 
-    const btnLabel = deboarded ? 'reboard' : 'deboard';
-    const btnClass = deboarded ? 'agent-board-btn reboard' : 'agent-board-btn';
-    const cardClass = deboarded ? 'agent-card deboarded' : 'agent-card';
-    const dotClass = deboarded ? 'presence-dot session' : `presence-dot ${presence}`;
-
-    let activityHtml = '';
-    if (deboarded) {
-      activityHtml = '<div class="agent-activity" style="color:var(--text-dim)">de-boarded</div>';
-    } else if (activity) {
-      const actClass = presence === 'typing' ? 'agent-activity typing' : 'agent-activity';
-      activityHtml = `<div class="${actClass}">${esc(activity)}</div>`;
-    }
+    if (inRoom && presence !== 'offline') inCount++;
 
     const card = document.createElement('div');
-    card.className = cardClass;
+    card.className = deboarded ? 'ac off' : 'ac';
+
+    // Status badge
+    let stClass, stText;
+    if (deboarded) { stClass = 'st-deboarded'; stText = 'de-boarded'; }
+    else { stClass = `st-${presence}`; stText = PRESENCE_LABELS[presence] || presence; }
+
+    // Action buttons — ALWAYS visible
+    let btns = '';
+    if (deboarded) {
+      btns = `<button class="abtn abtn-on" data-action="reboard" data-agent="${a.name}" title="Re-board this agent">+ rejoin</button>`;
+    } else {
+      btns = `
+        <button class="abtn abtn-cli" data-action="attach" data-agent="${a.name}" title="Open CLI in Terminal">cli</button>
+        <button class="abtn abtn-msg" data-action="msg" data-agent="${a.name}" title="Direct message">@</button>
+        <button class="abtn abtn-off" data-action="deboard" data-agent="${a.name}" title="De-board from room">x</button>
+      `;
+    }
+
+    // Activity row
+    let actHtml = '';
+    if (!deboarded && activity) {
+      const actCls = presence === 'typing' ? 'ac-activity tp' : 'ac-activity';
+      actHtml = `<div class="${actCls}">${esc(activity)}</div>`;
+    }
+
     card.innerHTML = `
-      <div class="agent-card-top">
-        <span class="${dotClass}"></span>
-        <span class="agent-name" style="color:${color(a.name)}">${a.name}</span>
-        <span class="agent-btn-row">
-          <button class="agent-cli-btn" data-agent="${a.name}" title="Open in Terminal">cli</button>
-          <button class="${btnClass}" data-agent="${a.name}" data-action="${btnLabel}">${btnLabel}</button>
-        </span>
+      <div class="ac-row1">
+        <span class="dot ${deboarded ? 'session' : presence}"></span>
+        <span class="ac-name" style="color:${color(a.name)}">${a.name}</span>
+        <div class="ac-actions">${btns}</div>
       </div>
-      <div class="agent-meta">
-        ${role ? `<div class="agent-role">${role}</div>` : ''}
-        ${activityHtml}
+      <div class="ac-row2">
+        <span class="ac-role">${role}</span>
+        <span class="ac-status ${stClass}">${stText}</span>
       </div>
+      ${actHtml}
     `;
 
-    // Click name -> set target
-    card.querySelector('.agent-name').onclick = (e) => {
-      e.stopPropagation();
-      $target.value = a.name;
-      $input.focus();
-    };
+    // Click name → set target
+    card.querySelector('.ac-name').onclick = (e) => { e.stopPropagation(); $target.value = a.name; $input.focus(); };
 
-    // Click CLI button -> pop out in Terminal.app
-    card.querySelector('.agent-cli-btn').onclick = (e) => {
-      e.stopPropagation();
-      fetch(`/api/agents/${a.name}/attach`, { method: 'POST' });
-    };
-
-    // Click deboard/reboard button
-    card.querySelector('.agent-board-btn').onclick = (e) => {
-      e.stopPropagation();
-      const action = e.target.dataset.action;
-      fetch(`/api/agents/${a.name}/${action}`, { method: 'POST' });
-    };
+    // Action button handlers
+    card.querySelectorAll('.abtn[data-action]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const action = btn.dataset.action;
+        const agent = btn.dataset.agent;
+        if (action === 'attach') fetch(`/api/agents/${agent}/attach`, { method: 'POST' });
+        else if (action === 'deboard') fetch(`/api/agents/${agent}/deboard`, { method: 'POST' });
+        else if (action === 'reboard') fetch(`/api/agents/${agent}/reboard`, { method: 'POST' });
+        else if (action === 'msg') { $target.value = agent; $input.focus(); }
+      };
+    });
 
     $agents.appendChild(card);
   });
+
+  // Update count
+  $count.textContent = `${inCount} / ${agentRoster.length + 1}`;
 
   // Update target dropdown
   const cur = $target.value;
@@ -638,27 +583,13 @@ function renderAgents() {
   $target.value = cur || 'all';
 }
 
-// ═══════════════ Send ═══════════════
+// ═══════════ Send ═══════════
 function send() {
   const text = $input.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-
-  ws.send(JSON.stringify({
-    sender: 'gurvinder',
-    target: $target.value,
-    content: text,
-    type: 'message',
-  }));
-
-  renderMsg({
-    sender: 'gurvinder',
-    target: $target.value,
-    content: text,
-    type: 'message',
-    timestamp: new Date().toISOString(),
-  });
+  ws.send(JSON.stringify({ sender: 'gurvinder', target: $target.value, content: text, type: 'message' }));
+  renderMsg({ sender: 'gurvinder', target: $target.value, content: text, type: 'message', timestamp: new Date().toISOString() });
   scrollEnd();
-
   $input.value = '';
   $input.style.height = 'auto';
   $target.value = 'all';
@@ -666,33 +597,17 @@ function send() {
 
 function scrollEnd() { $msgs.scrollTop = $msgs.scrollHeight; }
 
-// ═══════════════ Events ═══════════════
-$input.addEventListener('input', () => {
-  $input.style.height = 'auto';
-  $input.style.height = Math.min($input.scrollHeight, 120) + 'px';
-});
-
-$input.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-});
-
+// ═══════════ Events ═══════════
+$input.addEventListener('input', () => { $input.style.height = 'auto'; $input.style.height = Math.min($input.scrollHeight, 120) + 'px'; });
+$input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 $send.addEventListener('click', send);
 
-// ═══════════════ Init ═══════════════
-fetch('/api/agents')
-  .then(r => r.json())
-  .then(agents => {
-    agentRoster = agents;
-    agents.forEach(a => {
-      agentData[a.name] = {
-        presence: a.presence || 'offline',
-        activity: a.activity || null,
-        in_room: a.in_room !== false,
-      };
-    });
-    renderAgents();
-  })
-  .catch(() => {});
+// ═══════════ Init ═══════════
+fetch('/api/agents').then(r => r.json()).then(agents => {
+  agentRoster = agents;
+  agents.forEach(a => { agentData[a.name] = { presence: a.presence || 'offline', activity: a.activity || null, in_room: a.in_room !== false }; });
+  renderAgents();
+}).catch(() => {});
 connect();
 </script>
 </body>
