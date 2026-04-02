@@ -254,3 +254,26 @@ def test_files_security():
     """Test path traversal prevention."""
     resp = httpx.get(f"{SERVER_URL}/api/files?path=../../etc")
     assert resp.status_code == 403
+
+
+def test_dedup_message_ids_tracked():
+    """Verify that posting a message returns an incrementing ID."""
+    resp1 = httpx.post(f"{SERVER_URL}/api/messages", json={
+        "sender": "phase-1", "content": "dedup test 1",
+    })
+    resp2 = httpx.post(f"{SERVER_URL}/api/messages", json={
+        "sender": "phase-1", "content": "dedup test 2",
+    })
+    assert resp1.json()["id"] < resp2.json()["id"]
+
+
+def test_roll_call_endpoint():
+    """Test that roll call endpoint returns within timeout."""
+    resp = httpx.post(f"{SERVER_URL}/api/roll-call", timeout=15)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "responded" in data
+    assert "missing" in data
+    assert "total" in data
+    assert isinstance(data["responded"], list)
+    assert isinstance(data["missing"], list)

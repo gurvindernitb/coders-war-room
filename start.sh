@@ -4,13 +4,20 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PORT=5680
+PLIST_DEST="$HOME/Library/LaunchAgents/com.warroom.server.plist"
 
 echo "==========================================="
 echo "  CODER'S WAR ROOM — Starting Up"
 echo "==========================================="
 
-# Check if server is already running
-if curl -s "http://localhost:$PORT/api/agents" > /dev/null 2>&1; then
+if [ -f "$PLIST_DEST" ]; then
+    if ! curl -s "http://localhost:$PORT/api/agents" > /dev/null 2>&1; then
+        echo "Starting server via LaunchAgent..."
+        launchctl load "$PLIST_DEST" 2>/dev/null || true
+        sleep 2
+    fi
+    echo "Server running (LaunchAgent managed, port $PORT)"
+elif curl -s "http://localhost:$PORT/api/agents" > /dev/null 2>&1; then
     echo "Server already running on port $PORT"
 else
     echo "Starting server on port $PORT..."
@@ -18,7 +25,6 @@ else
     nohup python3 server.py > /tmp/warroom-server.log 2>&1 &
     echo $! > /tmp/warroom-server.pid
     sleep 2
-
     if curl -s "http://localhost:$PORT/api/agents" > /dev/null 2>&1; then
         echo "Server started (PID: $(cat /tmp/warroom-server.pid))"
     else
@@ -27,11 +33,9 @@ else
     fi
 fi
 
-# Onboard agents (pass through any arguments for selective onboarding)
 echo ""
 "$SCRIPT_DIR/onboard.sh" "$@"
 
-# Open web UI
 echo ""
 echo "Opening web UI..."
 open "http://localhost:$PORT"

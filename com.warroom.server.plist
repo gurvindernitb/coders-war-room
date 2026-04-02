@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.warroom.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/gurvindersingh/coders-war-room/server.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/gurvindersingh/coders-war-room</string>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/warroom-server.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/warroom-server.error.log</string>
+</dict>
+</plist>
