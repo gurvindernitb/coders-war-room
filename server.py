@@ -34,6 +34,19 @@ COLORS = {
     'phase-4': '#18ffff', 'phase-5': '#ea80fc', 'phase-6': '#69f0ae',
     'git-agent': '#ffd740',
 }
+# Palette for dynamically created agents (cycles through these)
+COLOR_PALETTE = ['#ff6e40', '#64ffda', '#ffd180', '#b9f6ca', '#84ffff', '#f48fb1', '#ce93d8', '#a5d6a7', '#80cbc4', '#ffcc80']
+
+
+def get_agent_color(name: str) -> str:
+    """Get color for an agent — static map for known agents, palette for dynamic ones."""
+    if name in COLORS:
+        return COLORS[name]
+    # Assign a deterministic color from palette based on name hash
+    idx = hash(name) % len(COLOR_PALETTE)
+    color = COLOR_PALETTE[idx]
+    COLORS[name] = color  # Cache it
+    return color
 # Each agent's working directory (for Warp file browser)
 PROJECT_PATH = str(Path(CONFIG.get("project_path", "~")).expanduser())
 AGENT_DIRS: dict[str, str] = {a["name"]: PROJECT_PATH for a in AGENTS}
@@ -109,7 +122,7 @@ def get_file_owner(relative_path: str) -> tuple:
     for agent in AGENTS:
         for pattern in agent.get("owns", []):
             if fnmatch.fnmatch(relative_path, pattern):
-                return agent["name"], COLORS.get(agent["name"])
+                return agent["name"], get_agent_color(agent["name"])
     return None, None
 
 
