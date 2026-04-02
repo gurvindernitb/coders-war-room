@@ -22,7 +22,7 @@ def _init_db(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "agent_last_state", {})
     monkeypatch.setattr(server, "agent_last_commit", {})
     monkeypatch.setattr(server, "agent_last_seen_id", {})
-    monkeypatch.setattr(server, "dir_has_owned", {})
+    monkeypatch.setattr(server, "agent_config", {})
     loop = asyncio.new_event_loop()
     loop.run_until_complete(server.init_db())
     loop.close()

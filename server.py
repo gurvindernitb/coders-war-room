@@ -1,6 +1,4 @@
 import asyncio
-import fnmatch
-import glob as globmod
 import json
 import re
 import subprocess
@@ -70,11 +68,16 @@ agent_membership: dict[str, bool] = {a["name"]: True for a in AGENTS}
 # Status store (manual status per agent, 30min TTL)
 agent_manual_status: dict[str, dict] = {}
 agent_last_state: dict[str, dict] = {}
-agent_owns_resolved: dict[str, list[str]] = {}
 agent_last_commit: dict[str, dict] = {}
 
 # Dedup: last message ID dispatched to each agent
 agent_last_seen_id: dict[str, int] = {}
+
+# Agent creation config (preserved for recovery)
+agent_config: dict[str, dict] = {}
+
+# Server startup timestamp
+SERVER_START_TIME = time.time()
 
 STATUS_TTL_SECONDS = 1800  # 30 minutes
 STALE_THRESHOLD_SECONDS = 300  # 5 minutes
@@ -84,51 +87,6 @@ STALE_EXEMPT_TOOLS = {"Read", "Bash", "WebFetch", "WebSearch", "Agent"}
 # ---------------------------------------------------------------------------
 # Ownership, staleness, manual status helpers
 # ---------------------------------------------------------------------------
-def resolve_ownership():
-    """Resolve glob patterns from config.yaml owns field into filenames."""
-    for agent in AGENTS:
-        name = agent["name"]
-        patterns = agent.get("owns", [])
-        resolved = set()
-        for pattern in patterns:
-            full_pattern = str(Path(PROJECT_PATH) / pattern)
-            matches = globmod.glob(full_pattern, recursive=True)
-            for match in matches:
-                p = Path(match)
-                if p.is_file():
-                    resolved.add(p.name)
-        agent_owns_resolved[name] = sorted(resolved)
-
-
-dir_has_owned: dict[str, bool] = {}
-
-
-def precompute_dir_ownership():
-    """Pre-compute which directories contain owned files."""
-    dir_has_owned.clear()
-    for agent in AGENTS:
-        for pattern in agent.get("owns", []):
-            full = str(Path(PROJECT_PATH) / pattern)
-            matches = globmod.glob(full, recursive=True)
-            for match in matches:
-                if not Path(match).is_file():
-                    continue
-                rel = str(Path(match).relative_to(PROJECT_PATH))
-                parts = Path(rel).parts
-                for i in range(len(parts) - 1):
-                    dir_path = str(Path(*parts[:i + 1]))
-                    dir_has_owned[dir_path] = True
-
-
-def get_file_owner(relative_path: str) -> tuple:
-    """Return (agent_name, color) for a file, or (None, None)."""
-    for agent in AGENTS:
-        for pattern in agent.get("owns", []):
-            if fnmatch.fnmatch(relative_path, pattern):
-                return agent["name"], get_agent_color(agent["name"])
-    return None, None
-
-
 def update_staleness(agent_name: str, tool: str, file: str) -> bool:
     """Track how long an agent has been on the same tool+file. Returns True if stalled."""
     now = time.time()
@@ -171,29 +129,19 @@ def reset_manual_ttl(agent_name: str):
 
 
 def refresh_last_commits():
-    """Get latest commit touching each agent's owned files."""
-    for agent in AGENTS:
-        name = agent["name"]
-        patterns = agent.get("owns", [])
-        if not patterns:
-            continue
-        files = []
-        for pattern in patterns:
-            full = str(Path(PROJECT_PATH) / pattern)
-            matches = globmod.glob(full, recursive=True)
-            files.extend(m for m in matches if Path(m).is_file())
-        if not files:
-            continue
-        try:
-            result = subprocess.run(
-                ["git", "-C", PROJECT_PATH, "log", "-1", "--format=%h %s", "--"] + files,
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                parts = result.stdout.strip().split(" ", 1)
-                agent_last_commit[name] = {"hash": parts[0], "message": parts[1] if len(parts) > 1 else ""}
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+    """Get the latest commit in the project directory."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", PROJECT_PATH, "log", "-1", "--format=%h %s"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parts = result.stdout.strip().split(" ", 1)
+            commit = {"hash": parts[0], "message": parts[1] if len(parts) > 1 else ""}
+            for a in AGENTS:
+                agent_last_commit[a["name"]] = commit
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -528,13 +476,13 @@ async def agent_status_loop():
                 reset_manual_ttl(name)
 
             manual = get_manual_status(name)
-            owns = agent_owns_resolved.get(name, [])
             last_commit = agent_last_commit.get(name)
 
             agents_data[name] = {
                 "presence": "blocked" if manual.get("blocked_by") else ("stalled" if stalled else activity["presence"]),
                 "activity": activity.get("activity"),
                 "in_room": agent_membership.get(name, False),
+                "session_alive": tmux_session_exists(session),
                 "dynamic": a.get("dynamic", False),
                 "task": manual.get("task"),
                 "progress": manual.get("progress"),
@@ -543,11 +491,20 @@ async def agent_status_loop():
                 "blocked_reason": manual.get("blocked_reason"),
                 "stalled": stalled,
                 "stalled_minutes": stalled_minutes,
-                "owns": owns,
                 "last_commit": last_commit,
             }
 
-        data = json.dumps({"type": "agent_status", "agents": agents_data})
+        uptime_s = int(time.time() - SERVER_START_TIME)
+        hours, remainder = divmod(uptime_s, 3600)
+        minutes = remainder // 60
+        uptime_human = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+        try:
+            la_result = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=2)
+            la_active = "com.warroom.server" in la_result.stdout
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            la_active = False
+
+        data = json.dumps({"type": "agent_status", "server": {"uptime": uptime_human, "launchagent": la_active}, "agents": agents_data})
         for client in connected_clients[:]:
             try:
                 await client.send_text(data)
@@ -625,8 +582,13 @@ async def lifespan(app: FastAPI):
     await init_db()
     await init_dedup_ids()
     reconcile_tmux_sessions()  # Adopt orphaned sessions on boot
-    resolve_ownership()
-    precompute_dir_ownership()
+    for a in AGENTS:
+        if a["name"] not in agent_config:
+            agent_config[a["name"]] = {
+                "directory": AGENT_DIRS.get(a["name"], PROJECT_PATH),
+                "model": "opus",
+                "skip_permissions": True,
+            }
     refresh_last_commits()
     task1 = asyncio.create_task(flush_queues_loop())
     task2 = asyncio.create_task(agent_status_loop())
@@ -652,6 +614,8 @@ class AgentCreate(BaseModel):
     initial_prompt: str = ""
     model: str = "opus"
     skip_permissions: bool = True
+    instructions: str = ""
+    role_type: str = ""
 
 
 class AgentStatus(BaseModel):
@@ -695,6 +659,8 @@ async def list_agents():
         {
             "name": a["name"],
             "role": a["role"],
+            "instructions": a.get("instructions", ""),
+            "role_type": a.get("role_type", a["name"]),
             "online": tmux_session_exists(a["tmux_session"]),
             "presence": get_agent_activity(a["tmux_session"])["presence"],
             "activity": get_agent_activity(a["tmux_session"])["activity"],
@@ -734,7 +700,7 @@ async def browse_directory(path: str = "~"):
 
 @app.get("/api/files")
 async def list_files(path: str = "."):
-    """List directory contents with ownership info."""
+    """List directory contents."""
     target = (Path(PROJECT_PATH) / path).resolve()
     project_resolved = Path(PROJECT_PATH).resolve()
     if not str(target).startswith(str(project_resolved)):
@@ -751,10 +717,9 @@ async def list_files(path: str = "."):
                 continue
             rel_path = str(item.relative_to(project_resolved))
             if item.is_dir():
-                entries.append({"name": name, "type": "dir", "path": rel_path, "has_owned": dir_has_owned.get(rel_path, False)})
+                entries.append({"name": name, "type": "dir", "path": rel_path})
             elif item.is_file():
-                owner, color = get_file_owner(rel_path)
-                entries.append({"name": name, "type": "file", "path": rel_path, "owner": owner, "color": color})
+                entries.append({"name": name, "type": "file", "path": rel_path})
     except PermissionError:
         return JSONResponse({"error": "Permission denied"}, status_code=403)
     return {"current": str(target.relative_to(project_resolved)) if target != project_resolved else ".", "parent": parent_rel, "entries": entries}
@@ -911,8 +876,7 @@ async def get_agent_status(agent_name: str):
     # Staleness
     stalled_minutes = get_stalled_minutes(agent_name)
 
-    # Ownership and last commit
-    owns = agent_owns_resolved.get(agent_name, [])
+    # Last commit
     last_commit = agent_last_commit.get(agent_name)
 
     return {
@@ -927,25 +891,7 @@ async def get_agent_status(agent_name: str):
         "blocked_by": manual.get("blocked_by"),
         "blocked_reason": manual.get("blocked_reason"),
         "stalled_minutes": stalled_minutes,
-        "owns": owns,
         "last_commit": last_commit,
-    }
-
-
-@app.get("/api/agents/{agent_name}/owns")
-async def get_agent_owns(agent_name: str):
-    """Get ownership patterns and resolved filenames for an agent."""
-    if agent_name not in AGENT_NAMES:
-        return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
-
-    agent_cfg = next((a for a in AGENTS if a["name"] == agent_name), None)
-    patterns = agent_cfg.get("owns", []) if agent_cfg else []
-    resolved = agent_owns_resolved.get(agent_name, [])
-
-    return {
-        "agent": agent_name,
-        "patterns": patterns,
-        "resolved": resolved,
     }
 
 
@@ -968,8 +914,8 @@ async def agent_remove(agent_name: str):
     agent_manual_status.pop(agent_name, None)
     agent_last_state.pop(agent_name, None)
     agent_last_commit.pop(agent_name, None)
-    agent_owns_resolved.pop(agent_name, None)
     agent_queues.pop(agent_name, None)
+    agent_config.pop(agent_name, None)
 
     # Remove from AGENTS list
     for i, a in enumerate(AGENTS):
@@ -983,6 +929,53 @@ async def agent_remove(agent_name: str):
     await broadcast_ws({"type": "agent_removed", "agent": agent_name})
 
     return {"status": "removed", "agent": agent_name}
+
+
+@app.post("/api/agents/{agent_name}/recover")
+async def recover_agent(agent_name: str):
+    """Recover a dead agent session."""
+    if agent_name not in AGENT_NAMES:
+        return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
+    if not agent_membership.get(agent_name, False):
+        return JSONResponse({"error": f"Agent '{agent_name}' was de-boarded — use reboard first"}, status_code=400)
+    session = AGENT_SESSIONS.get(agent_name, f"warroom-{agent_name}")
+    if tmux_session_exists(session):
+        return JSONResponse({"error": f"Agent '{agent_name}' session is already alive"}, status_code=400)
+
+    config = agent_config.get(agent_name, {})
+    agent_dir = config.get("directory", PROJECT_PATH)
+    model = config.get("model", "opus")
+    skip_perms = config.get("skip_permissions", True)
+
+    try:
+        subprocess.run(["tmux", "new-session", "-d", "-s", session, "-x", "200", "-y", "50", "-c", agent_dir], check=True, capture_output=True, timeout=5)
+        subprocess.run(["tmux", "set-option", "-t", session, "mouse", "on"], capture_output=True, timeout=2)
+        subprocess.run(["tmux", "set-option", "-t", session, "history-limit", "10000"], capture_output=True, timeout=2)
+        subprocess.run(["tmux", "rename-window", "-t", session, agent_name], capture_output=True, timeout=2)
+        subprocess.run(["tmux", "send-keys", "-t", session, f"export WARROOM_AGENT_NAME={agent_name}", "Enter"], capture_output=True, timeout=2)
+        await asyncio.sleep(0.5)
+
+        model_flag = f"--model {model}" if model != "opus" else ""
+        perms_flag = "--dangerously-skip-permissions" if skip_perms else ""
+        cmd = f"cd {agent_dir} && claude {model_flag} {perms_flag}".strip()
+        cmd = " ".join(cmd.split())
+        subprocess.run(["tmux", "send-keys", "-t", session, cmd, "Enter"], capture_output=True, timeout=2)
+
+        for _ in range(15):
+            await asyncio.sleep(2)
+            if check_agent_ready(session):
+                break
+
+        injection = f"Read ~/coders-war-room/startup.md — you are {agent_name}, session recovered. Acknowledge with your name and role, then wait for instructions."
+        send_to_tmux(session, injection)
+
+        saved = await save_message("system", "all", f"{agent_name} session recovered (context lost — fresh start)", "system")
+        await broadcast_ws({"type": "message", "message": saved})
+
+        return {"status": "recovered", "agent": agent_name, "warning": "Conversation context was lost — agent starts fresh"}
+    except subprocess.CalledProcessError as e:
+        subprocess.run(["tmux", "kill-session", "-t", session], capture_output=True)
+        return JSONResponse({"error": f"Recovery failed: {e}"}, status_code=500)
 
 
 @app.post("/api/agents/{agent_name}/deboard")
@@ -1117,6 +1110,8 @@ async def create_agent(req: AgentCreate):
         agent_entry = {
             "name": req.name,
             "role": req.role,
+            "instructions": req.instructions,
+            "role_type": req.role_type or req.name,
             "tmux_session": session,
             "dynamic": True,
         }
@@ -1125,6 +1120,7 @@ async def create_agent(req: AgentCreate):
         AGENT_SESSIONS[req.name] = session
         AGENT_DIRS[req.name] = agent_dir
         agent_membership[req.name] = True
+        agent_config[req.name] = {"directory": agent_dir, "model": req.model, "skip_permissions": req.skip_permissions, "instructions": req.instructions, "role_type": req.role_type or req.name}
 
         # Announce creation
         saved = await save_message(
@@ -1228,6 +1224,53 @@ async def agent_leave(agent_name: str):
 @app.post("/api/agents/{agent_name}/join")
 async def agent_join(agent_name: str):
     return await agent_reboard(agent_name)
+
+
+@app.get("/api/server/health")
+async def server_health():
+    uptime_s = int(time.time() - SERVER_START_TIME)
+    hours, remainder = divmod(uptime_s, 3600)
+    minutes = remainder // 60
+    uptime_human = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+    try:
+        result = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=2)
+        la_active = "com.warroom.server" in result.stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        la_active = False
+    alive = sum(1 for a in AGENTS if tmux_session_exists(a["tmux_session"]))
+    in_room = sum(1 for a in AGENTS if agent_membership.get(a["name"], False))
+    return {"uptime_seconds": uptime_s, "uptime_human": uptime_human, "port": PORT, "launchagent_active": la_active, "agent_count": len(AGENTS), "agents_in_room": in_room, "agents_alive": alive}
+
+
+@app.post("/api/server/restart")
+async def server_restart():
+    try:
+        result = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=2)
+        if "com.warroom.server" not in result.stdout:
+            return JSONResponse({"error": "LaunchAgent not installed — run: ./install-service.sh install"}, status_code=400)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return JSONResponse({"error": "Cannot check LaunchAgent status"}, status_code=500)
+    async def delayed_exit():
+        await asyncio.sleep(1)
+        import sys
+        sys.exit(0)
+    asyncio.create_task(delayed_exit())
+    return {"status": "restarting"}
+
+
+@app.get("/api/server/logs")
+async def server_logs():
+    log_path = Path("/tmp/warroom-server.log")
+    if not log_path.exists():
+        return PlainTextResponse("No log file found", status_code=404)
+    lines = log_path.read_text(errors="replace").split("\n")
+    last_500 = "\n".join(lines[-500:])
+    from html import escape
+    page = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>War Room Logs</title>
+<style>body{{font-family:'JetBrains Mono',monospace;font-size:12px;background:#0d1117;color:#c9d1d9;padding:20px;white-space:pre-wrap;word-break:break-all;line-height:1.5}}.p{{color:#8b949e;margin-bottom:16px;display:block}}</style>
+</head><body><span class="p">/tmp/warroom-server.log (last 500 lines)</span>
+{escape(last_500)}</body></html>"""
+    return HTMLResponse(page)
 
 
 @app.websocket("/ws")
