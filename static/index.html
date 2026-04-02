@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>War Room</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg-void: #060810;
@@ -371,7 +371,7 @@
   .msg-sender { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 12px; }
   .msg-tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--orange); background: var(--orange-dim); padding: 1px 6px; border-radius: 3px; }
   .msg-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-dim); }
-  .msg-body { font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .msg-body { font-family: 'Source Sans 3', -apple-system, sans-serif; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--text-primary); }
 
   /* ═══════════ INPUT ═══════════ */
   .input-bar {
@@ -1373,6 +1373,8 @@ function renderMsg(m) {
 
     const ts = m.timestamp ? m.timestamp.slice(11, 19) : '';
     const tag = isDirect ? `<span class="msg-tag">@${esc(m.target)}</span>` : '';
+    // Dynamic border-left color matching the sender's agent color
+    el.style.borderLeftColor = color(m.sender);
     el.innerHTML = `<div class="msg-head"><span class="msg-sender" style="color:${color(m.sender)}">${esc(m.sender)}</span>${tag}<span class="msg-time">${ts}</span></div><div class="msg-body">${esc(m.content)}</div>`;
     lastSender = m.sender;
   }
