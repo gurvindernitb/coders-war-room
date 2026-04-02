@@ -1,70 +1,70 @@
 # War Room — Agent Startup Protocol
 
-You are an agent in the Coder's War Room for Project Contextualise.
+You are an agent in the Coder's War Room for Project Contextualise. This file covers the universal protocol that ALL agents follow. Your role-specific instructions are in a separate file — you'll be told which one to read.
 
-## Step 1: Confirm Your Foundation
+## Communication
 
-At session start, you should have automatically received 4 core files. Confirm you have read:
+### Message Protocol
+- `[WARROOM @your-name]` — directed at you. You MUST respond and act.
+- `[WARROOM]` — broadcast. Respond only if it directly impacts your current work. Otherwise say "Noted" in the terminal. Do NOT post acknowledgements to the war room.
+- `[WARROOM SYSTEM]` — informational. Do not respond.
 
-1. **CLAUDE.md** (project constitution — MUST/MUST NOT rules)
-2. **docs/QUALITY_STANDARDS.md** (superpowers plugin, testing, cleaning protocol)
-3. **docs/AGENT_PROTOCOL.md** (war room protocol, ownership, escalation)
-4. **northstar/CLAUDE.md** (daemon architecture, interfaces, technical rules)
-
-If any are missing, read them now before proceeding.
-
-Respond with a brief confirmation: what the project is, what your role owns, and what tools/skills you will use. Keep it to 5-6 lines.
-
-## Step 2: Announce and Explore
-
-**SCOPE: Your project is the directory in which Claude Code started (check with `pwd`). Only explore and study files within that directory. The war room (`~/coders-war-room/`) is a coordination tool you use, not part of your codebase.**
-
-**2a. Post to the war room that you are exploring:**
-```bash
-~/coders-war-room/warroom.sh post "<your-name> onboarded. Reading docs and exploring the codebase now."
-```
-
-**2b. Build your understanding:**
-1. Check the files YOU own (see the ownership table in AGENT_PROTOCOL.md)
-2. Skim the relevant plan for your phase: `docs/superpowers/plans/2026-03-31-north-star-plan-*.md`
-3. Check if your phase is already built: `northstar/PLAN*_COMPLETE.md`
-4. Run the tests: `cd ~/contextualise/northstar && source venv/bin/activate && python -m pytest tests/ -q`
-
-Take your time. Read thoroughly.
-
-## Step 3: State Your Understanding and Post Status
-
-After exploring, tell us:
-1. Your phase status (built / partial / not started)
-2. Your owned files with a one-line description each
-3. Key interfaces you depend on and provide
-4. Any issues or gaps you noticed
-
-Then ask: **"I have my baseline understanding. Would you like to elaborate on my role or give me specific directives?"**
-
-**Post your status summary to the war room:**
-```bash
-~/coders-war-room/warroom.sh post "<your-name> exploration complete. Phase status: <status>. <N> owned files read. Tests: <pass/fail>. Ready for directives."
-```
-
-## Step 4: Wait for Instructions
-
-Do NOT start coding until you receive a directive from Gurvinder or the Supervisor.
-
-## War Room Commands
-
+### Commands
 ```
 ~/coders-war-room/warroom.sh post "message"              # broadcast
 ~/coders-war-room/warroom.sh post --to <agent> "message"  # direct message
+~/coders-war-room/warroom.sh history                      # recent messages
 ~/coders-war-room/warroom.sh mentions                     # messages for you
-~/coders-war-room/warroom.sh history                      # all recent messages
+~/coders-war-room/warroom.sh status "task" --progress N   # update your card
+~/coders-war-room/warroom.sh roll-call                    # check who's alive
 ```
 
-**Message protocol:**
-- `[WARROOM @your-name]` = directed at you, MUST respond and act
-- `[WARROOM]` = broadcast, respond only if relevant
-- `[WARROOM SYSTEM]` = informational, do not respond
+### When to Post
+- **Immediately:** Blocker, need file outside scope, cross-agent conflict, security issue, stall >10 minutes
+- **On completion:** Task done, evidence attached
+- **On failure:** What broke, what you tried
+- **Never:** Status updates for the sake of updates (silence = working)
 
-## Git Protocol
+### @Mentions Are Mandatory
+- `@git-agent commit <filepath>` — request a commit
+- `@git-agent merge approved for <STORY-ID>` — request a merge
+- `@supervisor` — escalate a decision or request approval
+- `@scout` — request investigation
+- Tags are explicit — agents do not monitor for implicit signals.
 
-All git operations go through the git-agent. Never run destructive git commands directly. Post to the war room: `@git-agent please commit my changes in <files>` and wait for confirmation.
+## The Six Commit Points
+
+Every task that moves through the pipeline generates up to six Git commits:
+
+1. **Scout Research** — `@git-agent commit docs/research/<STORY-ID>_notes.md`
+2. **Working Notes** (if context >80%) — `@git-agent commit docs/research/<STORY-ID>_working.md`
+3. **Engineer Code** — `@git-agent commit and push feature/<STORY-ID>`
+4. **QA Report** — `@git-agent commit docs/qa/<STORY-ID>_review.md`
+5. **Merge to Main** — `@git-agent merge approved for <STORY-ID>` (Supervisor only)
+6. **Status Update** — `@git-agent commit docs/PROJECT_STATUS.md` (Supervisor only)
+
+## Escalation Rules
+
+- **90%+ confident:** Proceed. Log your decision.
+- **60-89% confident:** Proceed with caution, flag to Supervisor in War Room.
+- **Below 60%:** Stop. Post to War Room. Wait for Supervisor or Gurvinder.
+
+### Immediate Escalation (Never Self-Resolve)
+- Cross-agent conflict
+- Security vulnerability discovered
+- Data contract change needed (DB schema, config shape, API)
+- New dependency required
+- Change to shared resources (context-spec.yaml, compile.py, entities.yaml)
+- Goal drift detected
+- Stall (stuck >10 minutes with no progress)
+
+## Git Rules
+
+All git operations go through the git-agent. Never run destructive git commands (push, reset, rebase, merge) directly. Post to the war room with `@git-agent` and wait for confirmation.
+
+## Session End
+
+When your work is done:
+1. Ensure all artifacts are committed via git-agent
+2. Post completion summary to the war room
+3. Terminate cleanly (fresh context is better than stale)
