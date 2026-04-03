@@ -206,6 +206,9 @@
   /* Desktop: hide card-level avatar (mobile will show it) */
   .ac > .agent-avatar { display: none; }
 
+  /* Desktop: hide mobile-only card elements */
+  .mobile-card-body { display: none; }
+
   .ac-name {
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
@@ -1551,9 +1554,113 @@
       background: var(--border);
     }
 
-    /* ═══ Agent cards ═══ */
-    .ac { padding: 12px 14px; }
-    .abtn { padding: 6px 12px; font-size: 10px; min-height: 34px; }
+    /* ═══ Agent cards — mobile redesign ═══ */
+    .ac {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--bg-card);
+      margin-bottom: 8px;
+      border-left: none;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .ac.off, .ac.session-dead { opacity: 0.6; }
+
+    .ac-operator {
+      background: var(--bg-elevated);
+    }
+
+    /* Hide desktop-only elements on mobile */
+    .ac-row1 { display: none; }
+    .ac-row2 { display: none; }
+    .ac-activity { display: none; }
+    .ac-progress { display: none; }
+    .ac-blocker { display: none; }
+    .ac-stalled-text { display: none; }
+    .ac-dead-warning { display: none; }
+    .ac-commit { display: none; }
+    .ac-sep { display: none; }
+    .ac-actions { display: none; }
+    .abtn { display: none; }
+
+    /* Show card-level avatar on mobile */
+    .ac > .agent-avatar { display: flex; }
+
+    /* Mobile card body */
+    .mobile-card-body {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+      align-items: center;
+    }
+
+    .mobile-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .mobile-card-name {
+      font-family: 'Source Sans 3', -apple-system, sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mobile-card-role {
+      font-family: 'Source Sans 3', -apple-system, sans-serif;
+      font-size: 13px;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .mobile-card-status {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+
+    .mobile-status-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .mobile-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .mobile-status-word {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+
+    /* Presence colors for mobile dots */
+    .mobile-status-dot.active { background: var(--green); }
+    .mobile-status-dot.busy { background: var(--yellow); }
+    .mobile-status-dot.typing { background: var(--cyan); }
+    .mobile-status-dot.session { background: var(--text-dim); }
+    .mobile-status-dot.offline { background: #555; }
+
+    .mobile-status-word.active { color: var(--green); }
+    .mobile-status-word.busy { color: var(--yellow); }
+    .mobile-status-word.typing { color: var(--cyan); }
+    .mobile-status-word.session { color: var(--text-dim); }
+    .mobile-status-word.offline { color: #555; }
 
     /* ═══ Drawer: full screen ═══ */
     .drawer { width: 100%; right: -100%; }
@@ -2103,6 +2210,27 @@ function renderAgents() {
       <span class="ac-role">Operator</span>
     </div>
   `;
+
+  // Card-level avatar (visible on mobile, hidden on desktop via CSS)
+  gCard.insertAdjacentHTML('afterbegin', renderAvatarCircle({name: 'gurvinder'}, 40));
+
+  // Mobile card body (visible on mobile, hidden on desktop)
+  const gMobileHtml = `
+    <div class="mobile-card-body">
+      <div class="mobile-card-info">
+        <div class="mobile-card-name" style="color:${resolveAgentColor({name: 'gurvinder'})}">gurvinder</div>
+        <div class="mobile-card-role">Operator</div>
+      </div>
+      <div class="mobile-card-status">
+        <div class="mobile-status-row">
+          <span class="mobile-status-dot active"></span>
+          <span class="mobile-status-word active">online</span>
+        </div>
+      </div>
+    </div>
+  `;
+  gCard.insertAdjacentHTML('beforeend', gMobileHtml);
+
   gCard.onclick = () => { $target.value = 'all'; $input.focus(); };
   $agents.appendChild(gCard);
   inCount++;
@@ -2210,6 +2338,62 @@ function renderAgents() {
       </div>
       ${actLine}${progressHtml}${blockerHtml}${stalledHtml}${deadHtml}${commitHtml}
     `;
+
+    // Card-level avatar (mobile)
+    card.insertAdjacentHTML('afterbegin', renderAvatarCircle(a, 40));
+
+    // Mobile card body
+    const PRESENCE_LABELS = { active: 'active', busy: 'working', typing: 'thinking', session: 'no claude', offline: 'offline' };
+    const presenceLabel = blockedBy ? 'blocked' : (stalled ? `stalled ${stalledMin}m` : (PRESENCE_LABELS[presence] || presence));
+    const presenceClass = blockedBy ? 'offline' : (stalled ? 'busy' : presence);
+
+    const mobileHtml = `
+      <div class="mobile-card-body">
+        <div class="mobile-card-info">
+          <div class="mobile-card-name" style="color:${agentColor}">${a.name}</div>
+          <div class="mobile-card-role">${role || ''}</div>
+        </div>
+        <div class="mobile-card-status">
+          <div class="mobile-status-row">
+            <span class="mobile-status-dot ${presenceClass}"></span>
+            <span class="mobile-status-word ${presenceClass}">${presenceLabel}</span>
+          </div>
+        </div>
+      </div>
+    `;
+    card.insertAdjacentHTML('beforeend', mobileHtml);
+
+    // Mobile tap handler — open action bottom sheet
+    if (window.innerWidth < 768) {
+      card.onclick = (e) => {
+        if (e.target.closest('.abtn')) return;
+        showBottomSheet(a.name.toUpperCase(), [
+          { icon: SVG_ICONS.chat, label: 'Message', action: 'msg' },
+          { icon: SVG_ICONS.eye, label: 'View Activity', action: 'activity' },
+          { icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>', label: 'Details', action: 'details' },
+        ], (item) => {
+          if (item.action === 'msg') {
+            $target.value = a.name;
+            if ($inputTarget) $inputTarget.textContent = `@${a.name} ▼`;
+            switchTab('chat');
+            $input.focus();
+          } else if (item.action === 'activity') {
+            const actItems = [];
+            actItems.push({ label: `Presence: ${presenceLabel}` });
+            if (activity) actItems.push({ label: `Activity: ${activity}` });
+            if (task) actItems.push({ label: `Task: ${task}` });
+            if (lastCommit) actItems.push({ label: `Commit: ${lastCommit.hash} ${lastCommit.message}` });
+            showBottomSheet('Activity — ' + a.name, actItems, () => {});
+          } else if (item.action === 'details') {
+            const detItems = [];
+            detItems.push({ label: `Role: ${a.role || 'none'}` });
+            if (a.instructions) detItems.push({ label: `Instructions: ${a.instructions}` });
+            detItems.push({ label: `Type: ${a.role_type || a.name}` });
+            showBottomSheet('Details — ' + a.name, detItems, () => {});
+          }
+        });
+      };
+    }
 
     // Drag handle for reordering
     card.draggable = true;
@@ -2353,6 +2537,24 @@ function renderAgents() {
           <span class="ac-status st-deboarded">de-boarded</span>
         </div>
       `;
+
+      // Card-level avatar + mobile body for de-boarded agents too
+      card.insertAdjacentHTML('afterbegin', renderAvatarCircle(a, 40));
+      const dMobileHtml = `
+        <div class="mobile-card-body">
+          <div class="mobile-card-info">
+            <div class="mobile-card-name" style="color:${resolveAgentColor(a)}">${a.name}</div>
+            <div class="mobile-card-role">${shortRole(a.role, a.name) || 'de-boarded'}</div>
+          </div>
+          <div class="mobile-card-status">
+            <div class="mobile-status-row">
+              <span class="mobile-status-dot offline"></span>
+              <span class="mobile-status-word offline">offline</span>
+            </div>
+          </div>
+        </div>
+      `;
+      card.insertAdjacentHTML('beforeend', dMobileHtml);
 
       card.querySelectorAll('.abtn[data-action]').forEach(btn => {
         btn.onclick = (e) => {
