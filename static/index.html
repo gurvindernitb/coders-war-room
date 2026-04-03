@@ -1218,7 +1218,7 @@
     .chat .messages {
       flex: 1;
       overflow-y: auto;
-      padding-bottom: 120px; /* Space for fixed input bar + tab bar */
+      padding-bottom: 140px; /* Initial estimate — ResizeObserver updates dynamically */
     }
 
     /* ═══ Header compact ═══ */
@@ -1775,7 +1775,7 @@ function connect() {
   ws.onerror = () => ws.close();
   ws.onmessage = (e) => {
     const d = JSON.parse(e.data);
-    if (d.type === 'history') { $msgs.innerHTML = ''; lastSender = null; lastTimestamp = null; d.messages.forEach(renderMsg); scrollEnd(); }
+    if (d.type === 'history') { $msgs.innerHTML = ''; lastSender = null; lastTimestamp = null; d.messages.forEach(renderMsg); scrollForce(); }
     else if (d.type === 'message') { renderMsg(d.message); scrollEnd(); }
     else if (d.type === 'agent_status') {
       if (d.server) {
@@ -2287,7 +2287,17 @@ function send() {
   updateSendVisibility();
 }
 
-function scrollEnd() { $msgs.scrollTop = $msgs.scrollHeight; }
+function scrollEnd() {
+  // Only auto-scroll if user is near the bottom (within 150px)
+  const nearBottom = ($msgs.scrollHeight - $msgs.scrollTop - $msgs.clientHeight) < 150;
+  if (nearBottom) {
+    $msgs.scrollTop = $msgs.scrollHeight;
+  }
+}
+
+function scrollForce() {
+  $msgs.scrollTop = $msgs.scrollHeight;
+}
 
 // ═══════════ Events ═══════════
 function updateSendVisibility() {
@@ -2309,6 +2319,31 @@ $input.addEventListener('input', () => {
 });
 $input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 $send.addEventListener('click', send);
+
+// ═══════════ Dynamic scroll padding (mobile) ═══════════
+if (window.innerWidth < 768) {
+  const inputBar = document.querySelector('.input-bar');
+  const tabBar = document.querySelector('.tab-bar');
+
+  function updateScrollPadding() {
+    const inputH = inputBar ? inputBar.offsetHeight : 80;
+    const tabH = tabBar ? tabBar.offsetHeight : 50;
+    $msgs.style.paddingBottom = (inputH + tabH + 16) + 'px';
+  }
+
+  // Initial calculation
+  updateScrollPadding();
+
+  // Recalculate when input bar resizes (multi-line text, attachment chip)
+  if (typeof ResizeObserver !== 'undefined' && inputBar) {
+    new ResizeObserver(updateScrollPadding).observe(inputBar);
+  }
+
+  // Also recalculate when textarea resizes
+  $input.addEventListener('input', () => {
+    setTimeout(updateScrollPadding, 50);
+  });
+}
 
 // ═══════════ Role Presets ═══════════
 const ROLE_PRESETS = {
