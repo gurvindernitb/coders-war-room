@@ -43,19 +43,35 @@ COLORS = {
     'phase-4': '#18ffff', 'phase-5': '#ea80fc', 'phase-6': '#69f0ae',
     'git-agent': '#ffd740',
 }
-# Palette for dynamically created agents (cycles through these)
-COLOR_PALETTE = ['#ff6e40', '#64ffda', '#ffd180', '#b9f6ca', '#84ffff', '#f48fb1', '#ce93d8', '#a5d6a7', '#80cbc4', '#ffcc80']
+
+ROLE_COLOR_DEFAULTS = {
+    'supervisor': '#b388ff', 'lead': '#b388ff', 'director': '#b388ff',
+    'engineer': '#448aff', 'builder': '#448aff', 'developer': '#448aff', 'coder': '#448aff', 'dev': '#448aff',
+    'scout': '#18ffff', 'researcher': '#18ffff', 'investigator': '#18ffff',
+    'qa': '#ff5252', 'q-a': '#ff5252', 'quality': '#ff5252', 'tester': '#ff5252', 'validator': '#ff5252',
+    'git': '#ffd740', 'git-agent': '#ffd740', 'vcs': '#ffd740',
+    'chronicler': '#ff80ab', 'observer': '#ff80ab', 'logger': '#ff80ab',
+    'gurvinder': '#ff9100',
+}
+EXTRA_SWATCHES = ['#64ffda', '#b9f6ca', '#ff6e40', '#8c9eff', '#ffcc80', '#84ffff', '#f48fb1', '#ce93d8']
 
 
 def get_agent_color(name: str) -> str:
-    """Get color for an agent — static map for known agents, palette for dynamic ones."""
+    """Get color for an agent. Priority: stored color > role default > hash-based."""
+    for a in AGENTS:
+        if a["name"] == name and a.get("color"):
+            return a["color"]
     if name in COLORS:
         return COLORS[name]
-    # Assign a deterministic color from palette based on name hash
-    idx = hash(name) % len(COLOR_PALETTE)
-    color = COLOR_PALETTE[idx]
-    COLORS[name] = color  # Cache it
-    return color
+    name_lower = name.lower()
+    for keyword, c in ROLE_COLOR_DEFAULTS.items():
+        if keyword in name_lower:
+            COLORS[name] = c
+            return c
+    idx = hash(name) % len(EXTRA_SWATCHES)
+    c = EXTRA_SWATCHES[idx]
+    COLORS[name] = c
+    return c
 # Each agent's working directory (for Warp file browser)
 PROJECT_PATH = str(Path(CONFIG.get("project_path", "~")).expanduser())
 AGENT_DIRS: dict[str, str] = {a["name"]: PROJECT_PATH for a in AGENTS}
@@ -193,21 +209,32 @@ async def init_db():
                 active INTEGER NOT NULL DEFAULT 1
             )
         """)
+        # Add color/icon columns if they don't exist (safe migration)
+        try:
+            await db.execute("ALTER TABLE agents ADD COLUMN color TEXT")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE agents ADD COLUMN icon TEXT")
+        except Exception:
+            pass
         await db.commit()
 
 
-async def persist_agent(agent_entry: dict, directory: str = "", model: str = "opus", skip_permissions: bool = True):
+async def persist_agent(agent_entry: dict, directory: str = "", model: str = "opus", skip_permissions: bool = True, color: str = None, icon: str = None):
     """Save or update an agent in SQLite. Called on create and reconcile."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO agents (name, role, instructions, role_type, tmux_session, directory, model, skip_permissions, dynamic, active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            INSERT INTO agents (name, role, instructions, role_type, tmux_session, directory, model, skip_permissions, dynamic, active, color, icon)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             ON CONFLICT(name) DO UPDATE SET
                 role = excluded.role,
                 tmux_session = excluded.tmux_session,
                 directory = excluded.directory,
                 model = excluded.model,
-                active = 1
+                active = 1,
+                color = COALESCE(excluded.color, agents.color),
+                icon = COALESCE(excluded.icon, agents.icon)
         """, (
             agent_entry["name"],
             agent_entry.get("role", ""),
@@ -218,6 +245,8 @@ async def persist_agent(agent_entry: dict, directory: str = "", model: str = "op
             model,
             1 if skip_permissions else 0,
             1 if agent_entry.get("dynamic", True) else 0,
+            color,
+            icon,
         ))
         await db.commit()
 
@@ -243,6 +272,8 @@ async def load_persisted_agents():
             "role_type": row["role_type"],
             "tmux_session": session,
             "dynamic": bool(row["dynamic"]),
+            "color": row["color"] if "color" in row.keys() else None,
+            "icon": row["icon"] if "icon" in row.keys() else None,
         }
         AGENTS.append(agent_entry)
         AGENT_NAMES.add(name)
@@ -760,6 +791,8 @@ class AgentCreate(BaseModel):
     skip_permissions: bool = True
     instructions: str = ""
     role_type: str = ""
+    color: Optional[str] = None
+    icon: Optional[str] = None
 
 
 class AgentStatus(BaseModel):
@@ -810,9 +843,37 @@ async def list_agents():
             "activity": get_agent_activity(a["tmux_session"])["activity"],
             "in_room": agent_membership.get(a["name"], False),
             "dynamic": a.get("dynamic", False),
+            "color": a.get("color"),
+            "icon": a.get("icon"),
         }
         for a in AGENTS
     ]
+
+
+class AgentIdentityUpdate(BaseModel):
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
+
+@app.patch("/api/agents/{agent_name}")
+async def update_agent_identity(agent_name: str, req: AgentIdentityUpdate):
+    """Update an agent's color and/or icon."""
+    if agent_name not in AGENT_NAMES:
+        return JSONResponse({"error": f"Agent '{agent_name}' not found"}, status_code=404)
+    for a in AGENTS:
+        if a["name"] == agent_name:
+            if req.color is not None:
+                a["color"] = req.color
+            if req.icon is not None:
+                a["icon"] = req.icon
+            break
+    async with aiosqlite.connect(DB_PATH) as db:
+        if req.color is not None:
+            await db.execute("UPDATE agents SET color = ? WHERE name = ?", (req.color, agent_name))
+        if req.icon is not None:
+            await db.execute("UPDATE agents SET icon = ? WHERE name = ?", (req.icon, agent_name))
+        await db.commit()
+    return {"status": "updated", "name": agent_name, "color": req.color, "icon": req.icon}
 
 
 @app.get("/api/browse")
@@ -1263,6 +1324,8 @@ async def create_agent(req: AgentCreate):
             "role_type": req.role_type or req.name,
             "tmux_session": session,
             "dynamic": True,
+            "color": req.color,
+            "icon": req.icon,
         }
         AGENTS.append(agent_entry)
         AGENT_NAMES.add(req.name)
@@ -1272,7 +1335,7 @@ async def create_agent(req: AgentCreate):
         agent_config[req.name] = {"directory": agent_dir, "model": req.model, "skip_permissions": req.skip_permissions, "instructions": req.instructions, "role_type": req.role_type or req.name}
 
         # Persist to SQLite — survives server restarts
-        await persist_agent(agent_entry, agent_dir, req.model, req.skip_permissions)
+        await persist_agent(agent_entry, agent_dir, req.model, req.skip_permissions, req.color, req.icon)
 
         # Announce creation
         saved = await save_message(
