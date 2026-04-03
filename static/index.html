@@ -1190,10 +1190,18 @@
 
     .chat {
       width: 100%;
-      height: calc(100vh - 50px - env(safe-area-inset-bottom, 8px));
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
 
     .chat.mobile-hidden { display: none; }
+
+    .chat .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding-bottom: 120px; /* Space for fixed input bar + tab bar */
+    }
 
     /* ═══ Header compact ═══ */
     header { padding: 8px 12px; }
@@ -1204,12 +1212,18 @@
     .server-btn { display: none; }
     #rollCallBtn { font-size: 8px; padding: 2px 8px; }
 
-    /* ═══ Input area ═══ */
+    /* ═══ Input area — fixed above tab bar ═══ */
     .input-bar {
+      position: fixed;
+      bottom: calc(50px + env(safe-area-inset-bottom, 8px));
+      left: 0;
+      right: 0;
       flex-direction: column;
       gap: 4px;
       padding: 8px 12px;
-      padding-bottom: calc(56px + env(safe-area-inset-bottom, 8px));
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      z-index: 100;
     }
 
     .input-target {

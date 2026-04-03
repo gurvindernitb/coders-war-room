@@ -550,11 +550,33 @@ def reconcile_tmux_sessions():
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
 
+            # Try to infer role from agent name using keyword matching
+            KNOWN_ROLES = [
+                (["supervisor"], "Strategic brain. Coordinates work, reviews QA, approves merges. Never writes code.", "supervisor", "SUPERVISOR_INSTRUCTIONS.md"),
+                (["scout"], "Research and investigation. Maps blast radius, verifies dependencies. Never writes code.", "scout", "SCOUT_INSTRUCTIONS.md"),
+                (["engineer"], "Implementation. TDD workflow in isolated worktrees.", "engineer", "ENGINEER_INSTRUCTIONS.md"),
+                (["qa", "q-a", "quality"], "Quality gate. Full verification suite. PASS or FAIL with evidence.", "qa", "QA_INSTRUCTIONS.md"),
+                (["git", "git-agent"], "Persistence backbone. All git operations.", "git-agent", "GIT_AGENT_INSTRUCTIONS.md"),
+                (["chronicler", "chronicle"], "Silent observer. Detects spec drift, tracks metrics.", "chronicler", "CHRONICLER_INSTRUCTIONS.md"),
+            ]
+            role_desc = "Dynamic agent (recovered)"
+            role_type = agent_name
+            instructions = ""
+            name_lower = agent_name.lower()
+            for keywords, desc, rtype, instr in KNOWN_ROLES:
+                if any(kw in name_lower for kw in keywords):
+                    role_desc = desc
+                    role_type = rtype
+                    instructions = instr
+                    break
+
             agent_entry = {
                 "name": agent_name,
-                "role": "Dynamic agent (recovered)",
+                "role": role_desc,
                 "tmux_session": session_name,
                 "dynamic": True,
+                "role_type": role_type,
+                "instructions": instructions,
             }
             AGENTS.append(agent_entry)
             AGENT_NAMES.add(agent_name)
@@ -721,6 +743,11 @@ async def list_files(path: str = "."):
         for item in items:
             name = item.name
             if name.startswith(".") and name != ".claude":
+                continue
+            # Skip junk directories and files
+            if name in ("__pycache__", "node_modules", ".pytest_cache", ".hypothesis", "venv", ".mypy_cache"):
+                continue
+            if name.endswith(".pyc") or name.endswith(".pyo"):
                 continue
             rel_path = str(item.relative_to(project_resolved))
             if item.is_dir():
