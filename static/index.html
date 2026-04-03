@@ -1108,6 +1108,190 @@
     transition: all 0.15s;
   }
   .server-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+
+  /* ═══════════ HIDE TAB BAR ON DESKTOP ═══════════ */
+  @media (min-width: 768px) {
+    .tab-bar { display: none !important; }
+  }
+
+  /* ═══════════ MOBILE RESPONSIVE ═══════════ */
+  @media (max-width: 767px) {
+    /* ═══ Tab Bar ═══ */
+    .tab-bar {
+      display: flex;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      padding: 6px 0;
+      padding-bottom: env(safe-area-inset-bottom, 8px);
+      z-index: 200;
+    }
+
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      padding: 4px 0;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .tab.active { color: var(--green); }
+    .tab-icon { font-size: 20px; line-height: 1; }
+    .tab-label { letter-spacing: 0.5px; }
+
+    /* ═══ Layout: single column ═══ */
+    .main { flex-direction: column; }
+
+    .sidebar {
+      display: none;
+      width: 100%;
+      height: calc(100vh - 50px - env(safe-area-inset-bottom, 8px));
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+      overflow-y: auto;
+    }
+
+    .file-panel {
+      display: none;
+      width: 100%;
+      height: calc(100vh - 50px - env(safe-area-inset-bottom, 8px));
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+      overflow-y: auto;
+    }
+
+    .sidebar.mobile-active, .file-panel.mobile-active {
+      display: flex;
+    }
+
+    .chat {
+      width: 100%;
+      height: calc(100vh - 50px - env(safe-area-inset-bottom, 8px));
+    }
+
+    .chat.mobile-hidden { display: none; }
+
+    /* ═══ Header compact ═══ */
+    header { padding: 8px 12px; }
+    .h-logo { font-size: 11px; letter-spacing: 3px; }
+    .h-sub { display: none; }
+    .h-sep { display: none; }
+    .server-stat { display: none; }
+    .server-btn { display: none; }
+    #rollCallBtn { font-size: 8px; padding: 2px 8px; }
+
+    /* ═══ Input area ═══ */
+    .input-bar {
+      padding: 8px 12px;
+      padding-bottom: calc(56px + env(safe-area-inset-bottom, 8px));
+    }
+
+    .msg-input { font-size: 16px; } /* Prevents iOS zoom on focus */
+
+    /* ═══ Messages ═══ */
+    .messages { padding: 12px 12px; }
+    .msg { padding: 8px 10px; }
+    .msg-body { font-size: 15px; }
+    .msg-sender { font-size: 12px; }
+
+    /* ═══ Agent cards ═══ */
+    .ac { padding: 12px 14px; }
+    .abtn { padding: 6px 12px; font-size: 10px; min-height: 34px; }
+
+    /* ═══ Drawer: full screen ═══ */
+    .drawer { width: 100%; right: -100%; }
+    .drawer.open { right: 0; }
+
+    /* ═══ File browser: larger touch targets ═══ */
+    .fp-item { padding: 10px 12px; font-size: 13px; min-height: 44px; }
+
+    /* ═══ Bottom Sheets ═══ */
+    .bottom-sheet {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border-bright);
+      border-radius: 16px 16px 0 0;
+      padding: 16px;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 8px));
+      z-index: 300;
+      transform: translateY(100%);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .bottom-sheet.open { transform: translateY(0); }
+
+    .bottom-sheet-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 299;
+      display: none;
+    }
+
+    .bottom-sheet-overlay.open { display: block; }
+
+    .bs-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .bs-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 8px;
+      font-family: 'Source Sans 3', sans-serif;
+      font-size: 16px;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .bs-item:last-child { border-bottom: none; }
+    .bs-item:active { background: var(--bg-card-hover); }
+
+    .bs-cancel {
+      text-align: center;
+      padding: 14px;
+      color: var(--red);
+      font-family: 'Source Sans 3', sans-serif;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+  }
 </style>
 </head>
 <body>
@@ -1157,6 +1341,22 @@
     <div id="fileTree" class="fp-tree"></div>
   </aside>
 </div>
+
+<!-- Mobile Tab Bar -->
+<nav class="tab-bar" id="tabBar">
+  <button class="tab active" data-tab="chat">
+    <span class="tab-icon">💬</span>
+    <span class="tab-label">Chat</span>
+  </button>
+  <button class="tab" data-tab="agents">
+    <span class="tab-icon">👥</span>
+    <span class="tab-label">Agents</span>
+  </button>
+  <button class="tab" data-tab="files">
+    <span class="tab-icon">📁</span>
+    <span class="tab-label">Files</span>
+  </button>
+</nav>
 
 <!-- ═══════════ DRAWER OVERLAY ═══════════ -->
 <div id="drawerOverlay" class="drawer-overlay"></div>
@@ -2088,6 +2288,77 @@ $('rollCallBtn').onclick = async () => {
     btn.disabled = false;
   }
 };
+
+// ═══════════ Mobile Tab Navigation ═══════════
+let activeTab = 'chat';
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  const sidebar = document.querySelector('.sidebar');
+  const chat = document.querySelector('.chat');
+  const filePanel = document.querySelector('.file-panel');
+
+  sidebar.classList.remove('mobile-active');
+  chat.classList.remove('mobile-hidden');
+  filePanel.classList.remove('mobile-active');
+
+  if (tab === 'agents') {
+    sidebar.classList.add('mobile-active');
+    chat.classList.add('mobile-hidden');
+  } else if (tab === 'files') {
+    filePanel.classList.add('mobile-active');
+    chat.classList.add('mobile-hidden');
+  }
+}
+
+const $tabBar = $('tabBar');
+if ($tabBar) {
+  $tabBar.querySelectorAll('.tab').forEach(tab => {
+    tab.onclick = () => switchTab(tab.dataset.tab);
+  });
+}
+
+// ═══════════ Bottom Sheets ═══════════
+function showBottomSheet(title, items, onSelect) {
+  document.querySelectorAll('.bottom-sheet, .bottom-sheet-overlay').forEach(el => el.remove());
+
+  const overlay = document.createElement('div');
+  overlay.className = 'bottom-sheet-overlay open';
+
+  const sheet = document.createElement('div');
+  sheet.className = 'bottom-sheet';
+
+  let html = `<div class="bs-title">${title}</div>`;
+  items.forEach((item, i) => {
+    html += `<div class="bs-item" data-index="${i}">${item.icon ? item.icon + ' ' : ''}${item.label}</div>`;
+  });
+  html += `<div class="bs-cancel">Cancel</div>`;
+  sheet.innerHTML = html;
+
+  document.body.appendChild(overlay);
+  document.body.appendChild(sheet);
+
+  requestAnimationFrame(() => sheet.classList.add('open'));
+
+  const close = () => {
+    sheet.classList.remove('open');
+    overlay.classList.remove('open');
+    setTimeout(() => { sheet.remove(); overlay.remove(); }, 250);
+  };
+
+  overlay.onclick = close;
+  sheet.querySelector('.bs-cancel').onclick = close;
+  sheet.querySelectorAll('.bs-item').forEach(el => {
+    el.onclick = () => {
+      const idx = parseInt(el.dataset.index);
+      close();
+      if (onSelect) onSelect(items[idx], idx);
+    };
+  });
+}
 
 // ═══════════ Init ═══════════
 fetch('/api/agents').then(r => r.json()).then(agents => {
