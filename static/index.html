@@ -1338,6 +1338,12 @@
       margin-top: 8px;
       border-top: 1px solid var(--border);
     }
+
+    /* ═══ Hide CLI button on mobile (can't open Warp from phone) ═══ */
+    .abtn-cli { display: none; }
+
+    /* ═══ Mobile Settings gear ═══ */
+    #mobileSettings { display: inline-block !important; }
   }
 </style>
 </head>
@@ -2279,15 +2285,54 @@ async function loadDir(path, depth, parentEl, autoExpand) {
 
         item.onclick = (e) => {
           e.stopPropagation();
-          fetch('/api/files/open', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({path: entry.path}),
-          }).then(r => r.json()).then(d => {
-            if (d.status === 'preview' && d.url) {
-              window.open(d.url, '_blank');
+          if (window.innerWidth < 768) {
+            const actions = [
+              { icon: '📋', label: 'Copy path', action: 'copy' },
+              { icon: '💬', label: 'Send to chat', action: 'chat' },
+              { icon: '👤', label: 'Assign to agent...', action: 'assign' },
+            ];
+            if (entry.name.match(/\.(md|markdown)$/i)) {
+              actions.push({ icon: '👁', label: 'Preview', action: 'preview' });
             }
-          }).catch(() => {});
+            showBottomSheet(entry.name, actions, (act) => {
+              if (act.action === 'copy') {
+                navigator.clipboard.writeText(entry.path).then(() => {
+                  // Brief visual feedback
+                }).catch(() => {});
+              } else if (act.action === 'chat') {
+                $input.value += entry.path + ' ';
+                switchTab('chat');
+                $input.focus();
+              } else if (act.action === 'assign') {
+                const agents = agentRoster.map(a => ({ label: `@${a.name}`, value: a.name, icon: '👤' }));
+                showBottomSheet('Assign to...', agents, (agent) => {
+                  $target.value = agent.value;
+                  if ($inputTarget) $inputTarget.textContent = `@${agent.value} ▼`;
+                  $input.value = `[file: ${entry.path}] `;
+                  switchTab('chat');
+                  $input.focus();
+                });
+              } else if (act.action === 'preview') {
+                fetch('/api/files/open', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({path: entry.path}),
+                }).then(r => r.json()).then(d => {
+                  if (d.url) window.open(d.url, '_blank');
+                });
+              }
+            });
+          } else {
+            fetch('/api/files/open', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({path: entry.path}),
+            }).then(r => r.json()).then(d => {
+              if (d.status === 'preview' && d.url) {
+                window.open(d.url, '_blank');
+              }
+            }).catch(() => {});
+          }
         };
 
         item.ondragstart = (e) => {
@@ -2361,6 +2406,34 @@ $('rollCallBtn').onclick = async () => {
     btn.disabled = false;
   }
 };
+
+// ═══════════ Mobile Settings Gear ═══════════
+(function() {
+  const gear = document.createElement('button');
+  gear.id = 'mobileSettings';
+  gear.className = 'server-btn';
+  gear.textContent = '⚙';
+  gear.style.cssText = 'display:none;font-size:14px;padding:4px 8px';
+  gear.onclick = () => {
+    fetch('/api/server/health').then(r => r.json()).then(d => {
+      showBottomSheet('Server', [
+        { icon: '⏱', label: `Uptime: ${d.uptime_human}` },
+        { icon: d.launchagent_active ? '🟢' : '⚪', label: `LaunchAgent: ${d.launchagent_active ? 'active' : 'not installed'}` },
+        { icon: '📊', label: `Agents: ${d.agents_alive} alive / ${d.agent_count} total` },
+        { icon: '🔄', label: 'Restart Server', action: 'restart' },
+        { icon: '📋', label: 'View Logs', action: 'logs' },
+      ], (item) => {
+        if (item.action === 'restart') {
+          if (confirm('Restart server?')) fetch('/api/server/restart', { method: 'POST' }).catch(() => {});
+        } else if (item.action === 'logs') {
+          window.open('/api/server/logs', '_blank');
+        }
+      });
+    }).catch(() => alert('Cannot reach server'));
+  };
+  const serverBar = document.querySelector('.server-bar');
+  if (serverBar) serverBar.appendChild(gear);
+})();
 
 // ═══════════ Mobile Tab Navigation ═══════════
 let activeTab = 'chat';
@@ -2537,6 +2610,14 @@ fetch('/api/agents').then(r => r.json()).then(agents => {
   renderAgents();
 }).catch(() => {});
 connect();
+
+// Reconnect WebSocket when returning from background (mobile Safari)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && (!ws || ws.readyState !== WebSocket.OPEN)) {
+    connect();
+  }
+});
+
 initFileTree();
 </script>
 </body>
