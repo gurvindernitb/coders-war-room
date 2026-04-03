@@ -10,7 +10,7 @@ from typing import Optional
 
 import aiosqlite
 import yaml
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File as FastAPIFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
@@ -50,6 +50,9 @@ PROJECT_PATH = str(Path(CONFIG.get("project_path", "~")).expanduser())
 AGENT_DIRS: dict[str, str] = {a["name"]: PROJECT_PATH for a in AGENTS}
 
 MAX_TMUX_MSG_LEN = 500
+
+UPLOAD_DIR = Path(PROJECT_PATH) / "docs" / "warroom-uploads"
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 SYSTEM_DIRS = {"Library", "Applications", "Public", "Movies", "Music", "Pictures"}
 HOME_DIR = str(Path.home())
@@ -1275,6 +1278,55 @@ async def server_logs():
 </head><body><span class="p">/tmp/warroom-server.log (last 500 lines)</span>
 {escape(last_500)}</body></html>"""
     return HTMLResponse(page)
+
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = FastAPIFile(...)):
+    """Upload a file (image, doc) to the project directory."""
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        return JSONResponse({"error": "File too large (max 10MB)"}, status_code=413)
+    from datetime import date
+    date_dir = UPLOAD_DIR / date.today().isoformat()
+    date_dir.mkdir(parents=True, exist_ok=True)
+    dest = date_dir / file.filename
+    dest.write_bytes(content)
+    rel_path = str(dest.relative_to(Path(PROJECT_PATH)))
+    return {"status": "uploaded", "path": rel_path, "filename": file.filename, "size": len(content)}
+
+
+@app.get("/uploads/{file_path:path}")
+async def serve_upload(file_path: str):
+    """Serve an uploaded file."""
+    full_path = UPLOAD_DIR / file_path
+    if not full_path.is_file():
+        return PlainTextResponse("Not found", status_code=404)
+    suffix = full_path.suffix.lower()
+    content_types = {
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+        ".pdf": "application/pdf", ".md": "text/markdown", ".txt": "text/plain",
+    }
+    ct = content_types.get(suffix, "application/octet-stream")
+    from fastapi.responses import Response
+    return Response(content=full_path.read_bytes(), media_type=ct)
+
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    manifest_path = Path(__file__).parent / "static" / "manifest.json"
+    if manifest_path.exists():
+        return JSONResponse(json.loads(manifest_path.read_text()))
+    return JSONResponse({"name": "War Room"})
+
+
+@app.get("/icon-{size}.png")
+async def serve_icon(size: str):
+    icon_path = Path(__file__).parent / "static" / f"icon-{size}.png"
+    if icon_path.exists():
+        from fastapi.responses import Response
+        return Response(content=icon_path.read_bytes(), media_type="image/png")
+    return PlainTextResponse("Not found", status_code=404)
 
 
 @app.websocket("/ws")

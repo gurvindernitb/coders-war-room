@@ -299,3 +299,19 @@ async def test_recover_deboarded_refused():
         resp = await client.post("/api/agents/engineer-1/recover")
         assert resp.status_code == 400
         assert "de-boarded" in resp.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_upload_file():
+    from server import app
+    import io
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        file_content = b"# Test Document\nHello world"
+        files = {"file": ("test-doc.md", io.BytesIO(file_content), "text/markdown")}
+        resp = await client.post("/api/upload", files=files)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "uploaded"
+        assert "path" in data
+        assert data["filename"] == "test-doc.md"
