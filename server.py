@@ -166,7 +166,88 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)"
         )
+        # Agent persistence table — survives restarts
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS agents (
+                name TEXT PRIMARY KEY,
+                role TEXT NOT NULL DEFAULT '',
+                instructions TEXT NOT NULL DEFAULT '',
+                role_type TEXT NOT NULL DEFAULT '',
+                tmux_session TEXT NOT NULL,
+                directory TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT 'opus',
+                skip_permissions INTEGER NOT NULL DEFAULT 1,
+                dynamic INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                active INTEGER NOT NULL DEFAULT 1
+            )
+        """)
         await db.commit()
+
+
+async def persist_agent(agent_entry: dict, directory: str = "", model: str = "opus", skip_permissions: bool = True):
+    """Save or update an agent in SQLite. Called on create and reconcile."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO agents (name, role, instructions, role_type, tmux_session, directory, model, skip_permissions, dynamic, active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(name) DO UPDATE SET
+                role = excluded.role,
+                tmux_session = excluded.tmux_session,
+                directory = excluded.directory,
+                model = excluded.model,
+                active = 1
+        """, (
+            agent_entry["name"],
+            agent_entry.get("role", ""),
+            agent_entry.get("instructions", ""),
+            agent_entry.get("role_type", agent_entry["name"]),
+            agent_entry["tmux_session"],
+            directory,
+            model,
+            1 if skip_permissions else 0,
+            1 if agent_entry.get("dynamic", True) else 0,
+        ))
+        await db.commit()
+
+
+async def load_persisted_agents():
+    """Load agents from SQLite on boot — restores registry after restart."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM agents WHERE active = 1")
+        rows = await cursor.fetchall()
+    restored = 0
+    for row in rows:
+        name = row["name"]
+        if name in AGENT_NAMES:
+            continue  # Already loaded from config or reconcile
+        session = row["tmux_session"]
+        if not tmux_session_exists(session):
+            continue  # Tmux session gone — skip, don't restore ghosts
+        agent_entry = {
+            "name": name,
+            "role": row["role"],
+            "instructions": row["instructions"],
+            "role_type": row["role_type"],
+            "tmux_session": session,
+            "dynamic": bool(row["dynamic"]),
+        }
+        AGENTS.append(agent_entry)
+        AGENT_NAMES.add(name)
+        AGENT_SESSIONS[name] = session
+        AGENT_DIRS[name] = row["directory"] or PROJECT_PATH
+        agent_membership[name] = True
+        agent_config[name] = {
+            "directory": row["directory"] or PROJECT_PATH,
+            "model": row["model"] or "opus",
+            "skip_permissions": bool(row["skip_permissions"]),
+            "instructions": row["instructions"],
+            "role_type": row["role_type"],
+        }
+        restored += 1
+    if restored:
+        print(f"[BOOT] Restored {restored} agents from SQLite")
 
 
 async def save_message(sender: str, target: str, content: str, msg_type: str = "message") -> dict:
@@ -588,6 +669,22 @@ def reconcile_tmux_sessions():
         pass
 
 
+async def auto_reconcile_loop():
+    """Every 60s: re-discover tmux sessions and persist any new ones.
+    Catches agents that appeared after boot (e.g. manually created tmux sessions)
+    or agents that dropped from memory due to unknown bugs."""
+    while True:
+        await asyncio.sleep(60)
+        before_count = len(AGENTS)
+        reconcile_tmux_sessions()
+        if len(AGENTS) > before_count:
+            new_count = len(AGENTS) - before_count
+            print(f"[RECONCILE] Discovered {new_count} new agent(s)")
+            # Persist newly discovered agents
+            for a in AGENTS[before_count:]:
+                await persist_agent(a, AGENT_DIRS.get(a["name"], PROJECT_PATH))
+
+
 # ---------------------------------------------------------------------------
 # WebSocket broadcast helper
 # ---------------------------------------------------------------------------
@@ -611,6 +708,11 @@ async def lifespan(app: FastAPI):
     await init_db()
     await init_dedup_ids()
     reconcile_tmux_sessions()  # Adopt orphaned sessions on boot
+    await load_persisted_agents()  # Restore agents saved in SQLite
+    # Persist any reconciled agents to SQLite for future restarts
+    for a in AGENTS:
+        if a.get("dynamic"):
+            await persist_agent(a, AGENT_DIRS.get(a["name"], PROJECT_PATH))
     for a in AGENTS:
         if a["name"] not in agent_config:
             agent_config[a["name"]] = {
@@ -621,9 +723,11 @@ async def lifespan(app: FastAPI):
     refresh_last_commits()
     task1 = asyncio.create_task(flush_queues_loop())
     task2 = asyncio.create_task(agent_status_loop())
+    task3 = asyncio.create_task(auto_reconcile_loop())
     yield
     task1.cancel()
     task2.cancel()
+    task3.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -1156,6 +1260,9 @@ async def create_agent(req: AgentCreate):
         agent_membership[req.name] = True
         agent_config[req.name] = {"directory": agent_dir, "model": req.model, "skip_permissions": req.skip_permissions, "instructions": req.instructions, "role_type": req.role_type or req.name}
 
+        # Persist to SQLite — survives server restarts
+        await persist_agent(agent_entry, agent_dir, req.model, req.skip_permissions)
+
         # Announce creation
         saved = await save_message(
             "system", "all", f"{req.name} has joined the war room", "system"
@@ -1273,7 +1380,33 @@ async def server_health():
         la_active = False
     alive = sum(1 for a in AGENTS if tmux_session_exists(a["tmux_session"]))
     in_room = sum(1 for a in AGENTS if agent_membership.get(a["name"], False))
-    return {"uptime_seconds": uptime_s, "uptime_human": uptime_human, "port": PORT, "launchagent_active": la_active, "agent_count": len(AGENTS), "agents_in_room": in_room, "agents_alive": alive}
+
+    # Degraded state detection: tmux sessions exist but server has 0 agents
+    try:
+        tmux_result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}"],
+            capture_output=True, text=True, timeout=3,
+        )
+        orphan_count = sum(1 for line in tmux_result.stdout.strip().split("\n")
+                          if line.strip().startswith("warroom-") and line.strip()[len("warroom-"):] not in AGENT_NAMES)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        orphan_count = 0
+
+    degraded = len(AGENTS) == 0 and orphan_count > 0
+    status = "degraded" if degraded else "healthy"
+
+    return {
+        "status": status,
+        "uptime_seconds": uptime_s,
+        "uptime_human": uptime_human,
+        "port": PORT,
+        "launchagent_active": la_active,
+        "agent_count": len(AGENTS),
+        "agents_in_room": in_room,
+        "agents_alive": alive,
+        "orphan_tmux_sessions": orphan_count,
+        "degraded": degraded,
+    }
 
 
 @app.post("/api/server/restart")
