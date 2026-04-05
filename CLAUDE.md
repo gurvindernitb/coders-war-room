@@ -6,6 +6,23 @@
 
 A local real-time chat + dashboard for orchestrating multiple Claude Code agents working on the same project. Built with FastAPI, SQLite, tmux, and vanilla HTML/JS.
 
+## Relationship to Project Contextualise (North Star)
+
+The War Room exists to **maintain a specific codebase**: the North Star daemon at `~/contextualise/northstar/` (Gurvinder's personal AI life-operations system). The War Room's multi-agent team (Supervisor, Scout, Engineer, QA, Git Agent, Chronicler) executes Jira tickets in the NSV project that change code in `~/contextualise/`.
+
+**Two separate codebases, one shared purpose:**
+
+| Project | Location | Role |
+|---------|----------|------|
+| **War Room** (this project) | `~/coders-war-room/` | The maintenance team — wakes on demand, executes tickets, builds features, fixes bugs |
+| **Project Contextualise** (sister project) | `~/contextualise/` | The codebase being maintained — holds the North Star daemon, specs, context engineering YAML, Jira tickets |
+
+**The Forge (future):** Planned bridge between the two projects via a filesystem DMZ at `~/.forge/`. Spec: `~/contextualise/docs/superpowers/specs/2026-04-04-the-forge-design.md`. The North Star daemon's **Ambassador subsystem** will drop JSON directives in `~/.forge/inbox/`; the War Room team picks them up, executes tickets, writes responses to `~/.forge/outbox/`. Deployment via deterministic `deploy.sh` owned by North Star — the War Room NEVER restarts the North Star daemon.
+
+**Knowledge Base:** War Room agents read `~/contextualise/docs/forge/` at session start when working on North Star — persistent institutional memory about the NSv2 codebase (ARCHITECTURE.md, DECISIONS.md, HISTORY.md, AGENT_HANDBOOK.md). Eliminates re-learning the codebase every session.
+
+**Jira project:** NSV at gurvindernitb.atlassian.net/browse/NSV — 78 tickets total (65 NSv2 + 13 Forge + misc). Work flows through the pipeline defined in `~/contextualise/docs/SESSION_LIFECYCLE.md`.
+
 **Single-file architecture:** `server.py` is the backend, `static/index.html` is the frontend. Both are large but intentionally monolithic — the features are tightly interconnected.
 
 ## Key Files
