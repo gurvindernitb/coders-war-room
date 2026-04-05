@@ -23,6 +23,8 @@ The War Room exists to **maintain a specific codebase**: the North Star daemon a
 
 **Jira project:** NSV at gurvindernitb.atlassian.net/browse/NSV — 78 tickets total (65 NSv2 + 13 Forge + misc). Work flows through the pipeline defined in `~/contextualise/docs/SESSION_LIFECYCLE.md`.
 
+**UI/UX Tooling available for War Room agents:** See `~/contextualise/CLAUDE.md` § "UI/UX Tooling Available to Claude Code" for the full list. Summary: Chrome/Preview MCP servers are installed (browser automation + dev server testing); Figma MCP and Tailwind design-system skill install on demand for Phase 9 iOS work.
+
 **Single-file architecture:** `server.py` is the backend, `static/index.html` is the frontend. Both are large but intentionally monolithic — the features are tightly interconnected.
 
 ## Key Files
