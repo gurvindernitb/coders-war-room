@@ -3,6 +3,7 @@ import json
 import re
 import subprocess
 import time
+import urllib.parse
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Optional
 import aiosqlite
 import yaml
 from fastapi import FastAPI, UploadFile, File as FastAPIFile, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
@@ -774,6 +776,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# CORS — allows the North Star dashboard (port 9999) and the brainstorm
+# visual companion (port 53779) to call War Room endpoints directly.
+# Local-only tool: no auth, no secrets, wide-open is fine.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 class MessageCreate(BaseModel):
     sender: str
@@ -1384,6 +1396,23 @@ async def create_agent(req: AgentCreate):
         )
 
 
+async def _warp_inject(cmd: str, delay: float = 1.2) -> None:
+    """Wait for the new Warp shell to initialise, then type `cmd` + Enter."""
+    await asyncio.sleep(delay)
+    cmd_esc = cmd.replace("\\", "\\\\").replace('"', '\\"')
+    # Warp's binary is named "stable" so `tell process "Warp"` silently fails.
+    # Activate Warp first, then send keystrokes to the frontmost app instead.
+    osa = (
+        'tell application "Warp" to activate\n'
+        'delay 0.2\n'
+        'tell application "System Events"\n'
+        f'  keystroke "{cmd_esc}"\n'
+        '  key code 36\n'  # Return
+        'end tell'
+    )
+    subprocess.run(["osascript", "-e", osa], capture_output=True, timeout=10)
+
+
 @app.post("/api/agents/{agent_name}/attach")
 async def agent_attach(agent_name: str):
     """Pop out an agent's Claude Code session into a new terminal window."""
@@ -1404,25 +1433,26 @@ async def agent_attach(agent_name: str):
             capture_output=True, timeout=2,
         )
 
-        # Create launcher script IN the project directory so Warp's
-        # file browser opens there (Warp uses the script's location as CWD)
-        launcher = Path(agent_dir) / f".warroom-attach.sh"
-        launcher.write_text(
-            f"#!/bin/bash\n"
-            f"# War Room — {agent_name}\n"
-            f"cd {agent_dir}\n"
-            f"printf '\\033]0;{agent_name} — War Room\\007'\n"
-            f"exec tmux attach -t {session}\n"
-        )
-        launcher.chmod(0o755)
+        attach_cmd = f"exec tmux attach -t {session}"
 
         warp = Path("/Applications/Warp.app")
         if warp.exists():
-            subprocess.run(["open", "-a", "Warp", str(launcher)], capture_output=True, timeout=5)
+            # Step 1: open a new Warp tab at the agent directory.
+            # warp:// URL scheme opens the tab but ignores any 'command' parameter.
+            warp_url = "warp://action/new_tab?" + urllib.parse.urlencode({"path": agent_dir})
+            subprocess.run(["open", warp_url], capture_output=True, timeout=5)
+            # Step 2: after the shell initialises, inject the attach command.
+            # Prefix with an OSC title escape so the Warp tab is named after the
+            # agent before zsh or tmux can overwrite it with "exec" or the cwd.
+            titled_cmd = (
+                f"printf '\\033]0;{agent_name} \u2014 War Room\\007'; "
+                f"{attach_cmd}"
+            )
+            asyncio.create_task(_warp_inject(titled_cmd))
         else:
             subprocess.run(
                 ["osascript", "-e",
-                 f'tell application "Terminal"\n  activate\n  do script "cd {agent_dir} && tmux attach -t {session}"\nend tell'],
+                 f'tell application "Terminal"\n  activate\n  do script "cd {agent_dir} && {attach_cmd}"\nend tell'],
                 capture_output=True, timeout=5,
             )
         return {"status": "attached", "agent": agent_name, "session": session}
@@ -1601,6 +1631,14 @@ async def root():
     if html_path.exists():
         return HTMLResponse(html_path.read_text())
     return HTMLResponse("<h1>War Room — static/index.html not found</h1>")
+
+
+@app.get("/evolution")
+async def evolution():
+    html_path = Path(__file__).parent / "static" / "evolution-tab.html"
+    if html_path.exists():
+        return HTMLResponse(html_path.read_text())
+    return HTMLResponse("<h1>Evolution tab — static/evolution-tab.html not found</h1>")
 
 
 # ---------------------------------------------------------------------------
