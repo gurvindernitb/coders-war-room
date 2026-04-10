@@ -62,6 +62,32 @@ Every task that moves through the pipeline generates up to six Git commits:
 
 All git operations go through the git-agent. Never run destructive git commands (push, reset, rebase, merge) directly. Post to the war room with `@git-agent` and wait for confirmation.
 
+## War Room Communication Standard — Signal Only
+
+Every message you post to the War Room MUST follow this format. No prose. No explanations. No summaries. Signal only.
+
+**Required signals (use exactly these strings):**
+
+| Event | Post format |
+|-------|-------------|
+| Session start | `[ROLE] online — working: <STORY-ID>` |
+| Work begins | `[ROLE] START: <STORY-ID> — <one-line task>` |
+| Blocker | `[ROLE] BLOCKED: <STORY-ID> — <reason> @supervisor` |
+| Work complete | `[ROLE] DONE: <STORY-ID> — <one-line outcome>` |
+| QA trigger | `READY-FOR-QA: <STORY-ID>` |
+| QA verdict | `QA PASS: <STORY-ID>` or `QA FAIL-ROUTINE: <STORY-ID>` or `QA FAIL-CRITICAL: <STORY-ID> @supervisor` |
+| Merge complete | `MERGED: <STORY-ID>` |
+| Pipeline idle | `PIPELINE-IDLE: no unblocked stories — @gurvinder` |
+| Exception proposed | `EXCEPTION-PROPOSED: <STORY-ID> — <principle> — <proposed exception>` |
+
+**What "signal only" means:**
+
+❌ Wrong: "I have completed the implementation of the authentication module and all tests are passing. The feature branch is ready for QA review."
+
+✅ Right: `[ENGINEER] DONE: NS-42 — auth module implemented, 23 tests pass`
+
+Gurvinder reads the War Room to get status in 10 seconds. Every extra word costs tokens and buries the signal. If you find yourself writing a sentence, stop and compress it to one line.
+
 ## Session End
 
 When your work is done:
