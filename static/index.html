@@ -2928,32 +2928,32 @@ const ROLE_PRESETS = {
   supervisor: {
     role: "Strategic brain. Reads Jira, decomposes work into task briefs using Sequential Thinking, assigns to pipeline agents, reviews QA reports, approves merges. Never writes code.",
     instructions: "SUPERVISOR_INSTRUCTIONS.md",
-    prompt: "Startup: Read docs/PROJECT_STATUS.md for handoff context. Check Jira for current sprint state. Assess what's in each pipeline stage.",
+    prompt: "Invoke the supervisor-role skill to load your identity and operating instructions. Then: check Jira for current sprint state and read docs/PROJECT_STATUS.md.",
   },
   scout: {
     role: "Research and investigation. Analyses code, maps blast radius, verifies dependencies, produces research ledgers at docs/research/. Works ahead of Engineers. Never writes code.",
     instructions: "SCOUT_INSTRUCTIONS.md",
-    prompt: "Startup: Check Jira 'Scout Review' column for assignments. Read the story description. Begin research.",
+    prompt: "Invoke the scout-role skill to load your identity and operating instructions. Then: check Jira 'Scout Review' column for your assignment.",
   },
   engineer: {
     role: "Implementation. Receives task brief + research ledger, works in isolated git worktree, follows Superpowers TDD workflow, produces tested code on feature branches.",
     instructions: "ENGINEER_INSTRUCTIONS.md",
-    prompt: "Startup: Read the task brief from Supervisor. Read the research ledger at docs/research/<STORY-ID>_notes.md. Set up your worktree.",
+    prompt: "Invoke the engineer-role skill to load your identity and operating instructions. Then: read the task brief from Supervisor and the research ledger at docs/research/<STORY-ID>_notes.md.",
   },
   qa: {
-    role: "Quality gate. Runs full verification suite (pytest, flake8, mypy, bandit). Produces QA reports at docs/qa/. Verdict is PASS or FAIL with evidence. Never writes code.",
+    role: "Quality gate. Runs full verification suite (deterministic + QODO MCP + CodeRabbit CLI). Produces two-section QA reports at docs/qa/. Verdict is PASS or FAIL with evidence. Never writes code.",
     instructions: "QA_INSTRUCTIONS.md",
-    prompt: "Startup: Check Jira 'QA Review' column. Checkout the feature branch. Run the full verification suite.",
+    prompt: "Invoke the qa-role skill to load your identity and operating instructions. Then: check Jira 'QA Review' column and checkout the feature branch.",
   },
   'git-agent': {
-    role: "Persistence backbone. All git operations: commits, branches, merges, cleanup. Six commit points per task. Runs test gate before merge. Never writes code. Never merges without Supervisor approval.",
+    role: "Persistence backbone. All git operations: commits, branches, merges, cleanup. Six commit points per task. Blocks merges without QA PASS report. Never writes code.",
     instructions: "GIT_AGENT_INSTRUCTIONS.md",
-    prompt: "Startup: Check for pending commit requests in the war room. Verify branch state with git status.",
+    prompt: "Invoke the git-agent-role skill to load your identity and operating instructions. Then: check for pending commit requests in the war room.",
   },
   chronicler: {
-    role: "Silent observer. Reads War Room, research ledgers, QA reports, git log. Produces weekly learnings at docs/chronicler/. Detects spec drift and regression patterns. Never participates in active pipeline.",
+    role: "Silent observer. Reads War Room, research ledgers, QA reports, git log. Produces weekly learnings with Proposed Changes section. Flags drift immediately.",
     instructions: "CHRONICLER_INSTRUCTIONS.md",
-    prompt: "Startup: Read war room history. Check recent git log. Review latest QA reports.",
+    prompt: "Invoke the chronicler-role skill to load your identity and operating instructions. Then: read war room history and check recent git log.",
   },
 };
 
