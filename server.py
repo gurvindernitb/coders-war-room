@@ -641,7 +641,9 @@ async def agent_status_loop():
                         "Unbounded context degrades reasoning. "
                         "Commit any working notes to git first, then start a fresh Claude Code session."
                     )
-                    await store_message("system", ttl_msg, session_id="__system__")
+                    saved = await save_message("system", "all", ttl_msg, "system")
+                    await broadcast_ws({"type": "message", "message": saved})
+                    await dispatch_to_agents(saved)
 
         uptime_s = int(time.time() - SERVER_START_TIME)
         hours, remainder = divmod(uptime_s, 3600)
