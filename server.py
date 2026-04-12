@@ -11,7 +11,7 @@ from typing import Optional
 
 import aiosqlite
 import yaml
-from fastapi import FastAPI, UploadFile, File as FastAPIFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, UploadFile, File as FastAPIFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
@@ -222,6 +222,22 @@ async def init_db():
             await db.execute("ALTER TABLE agents ADD COLUMN icon TEXT")
         except Exception:
             pass
+        # Hook events table — stores hook callback data from agent sessions
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS hook_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                tool TEXT DEFAULT '',
+                exit_code INTEGER DEFAULT 0,
+                summary TEXT DEFAULT '',
+                timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_hook_events_agent
+            ON hook_events(agent, timestamp DESC)
+        """)
         await db.commit()
 
 
@@ -1612,6 +1628,56 @@ async def serve_icon(size: str):
         from fastapi.responses import Response
         return Response(content=icon_path.read_bytes(), media_type="image/png")
     return PlainTextResponse("Not found", status_code=404)
+
+
+@app.post("/api/hooks/event")
+async def receive_hook_event(request: Request):
+    """Receive hook callback data from agent hook scripts."""
+    data = await request.json()
+    agent = data.get("agent", "unknown")
+    event_type = data.get("event_type", "unknown")
+    tool = data.get("tool", "")
+    exit_code = data.get("exit_code", 0)
+    summary = data.get("summary", "")
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO hook_events (agent, event_type, tool, exit_code, summary) VALUES (?, ?, ?, ?, ?)",
+            (agent, event_type, tool, exit_code, summary),
+        )
+        await db.commit()
+
+    # Broadcast to WebSocket clients
+    event = {
+        "type": "hook_event",
+        "agent": agent,
+        "event_type": event_type,
+        "tool": tool,
+        "exit_code": exit_code,
+        "summary": summary,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    for ws in list(connected_clients):
+        try:
+            await ws.send_text(json.dumps(event))
+        except Exception:
+            if ws in connected_clients:
+                connected_clients.remove(ws)
+
+    return {"status": "ok"}
+
+
+@app.get("/api/agents/{name}/hook-events")
+async def get_agent_hook_events(name: str, limit: int = 50):
+    """Return recent hook events for an agent."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM hook_events WHERE agent = ? ORDER BY timestamp DESC LIMIT ?",
+            (name, limit),
+        )
+        rows = await cursor.fetchall()
+    return {"events": [dict(r) for r in rows]}
 
 
 @app.websocket("/ws")
