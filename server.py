@@ -1726,6 +1726,30 @@ async def get_agent_hook_events(name: str, limit: int = 50):
     return {"events": [dict(r) for r in rows]}
 
 
+@app.get("/api/hooks/events/all")
+async def get_all_hook_events(limit: int = 200):
+    """Return recent hook events across all agents for Gates dashboard."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM hook_events ORDER BY timestamp DESC LIMIT ?",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+    return {"events": [dict(r) for r in rows]}
+
+
+@app.get("/api/registries/roles")
+async def get_roles_registry():
+    """Return role registry for UI — role dropdown, model hints."""
+    reg_path = os.path.join(os.path.dirname(__file__), "registries", "role-registry.yaml")
+    if not os.path.exists(reg_path):
+        return {}
+    with open(reg_path) as f:
+        data = yaml.safe_load(f)
+    return data.get("roles", {})
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
