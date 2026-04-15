@@ -25,6 +25,7 @@ roles:
     hooks:
       - template: base-hooks
       - template: no-code-hooks
+      - template: activity-reporting
     gates_accountable_for: []
     gates_routes_on_fail: [gate-1, gate-2, gate-3]
     startup_checklist:
@@ -55,6 +56,7 @@ roles:
     hooks:
       - template: base-hooks
       - template: no-code-hooks
+      - template: activity-reporting
     gates_accountable_for: []
     gates_investigates_on_fail: [gate-2]
 
@@ -74,6 +76,7 @@ roles:
       - template: base-hooks
       - template: engineer-stop-gate
       - template: post-edit-lint
+      - template: activity-reporting
     gates_accountable_for: [gate-1]
     gate_tools_in_pre_commit:
       - pytest
@@ -108,6 +111,7 @@ roles:
       - template: base-hooks
       - template: no-code-hooks
       - template: qa-stop-gate
+      - template: activity-reporting
     gates_accountable_for: [gate-1]
     gate_tools_in_review:
       - pytest
@@ -141,6 +145,7 @@ roles:
       - template: base-hooks
       - template: no-code-hooks
       - template: merge-block-gate
+      - template: activity-reporting
     gates_accountable_for: []
 
   chronicler:
@@ -165,6 +170,7 @@ roles:
     hooks:
       - template: base-hooks
       - template: no-code-hooks
+      - template: activity-reporting
     gates_accountable_for: []
     monitors_budgets_for:
       - qodo

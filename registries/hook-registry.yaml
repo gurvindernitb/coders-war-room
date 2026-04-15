@@ -58,3 +58,12 @@ templates:
           command: "hooks/post-edit-lint.sh"
           async: true
           timeout: 15
+
+  activity-reporting:
+    description: "Reports tool activity to War Room for live card display"
+    hooks:
+      PostToolUse:
+        - type: command
+          command: "hooks/post-tool-use.sh"
+          async: true
+          timeout: 5

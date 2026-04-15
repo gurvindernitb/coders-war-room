@@ -124,13 +124,26 @@ def write_settings(role_type: str, working_dir: str) -> str:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python settings_generator.py <role-type> [working-dir]")
+    if len(sys.argv) < 3:
+        print("Usage: python settings_generator.py <role-type> <working-dir>")
         print("  role-type: supervisor, scout, engineer, qa, git-agent, chronicler")
-        print("  working-dir: defaults to ~/contextualise")
+        print("  working-dir: REQUIRED — path to the agent's working directory")
+        print("")
+        print("  WARNING: This writes .claude/settings.local.json which overrides")
+        print("  your personal Claude Code settings in that directory. Never point")
+        print("  it at a directory you use Claude Code in manually (e.g. ~/contextualise)")
+        print("  unless you intend to install War Room hooks there.")
         sys.exit(1)
 
     role = sys.argv[1]
-    wdir = sys.argv[2] if len(sys.argv) > 2 else "~/contextualise"
+    wdir = sys.argv[2]
+    # Safety check: refuse to write to ~/contextualise unless --force is passed
+    expanded = os.path.abspath(os.path.expanduser(wdir))
+    forbidden = os.path.abspath(os.path.expanduser("~/contextualise"))
+    if expanded == forbidden and "--force" not in sys.argv:
+        print(f"ERROR: Refusing to write War Room settings to {forbidden}")
+        print("       This would override your personal Claude Code config.")
+        print("       If you really want to, pass --force as the third argument.")
+        sys.exit(2)
     path = write_settings(role, wdir)
     print(f"Generated: {path}")

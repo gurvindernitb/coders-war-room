@@ -122,6 +122,15 @@ SESSION_TTL_WARNED: set = set()  # Track agents who have already been warned
 STATUS_TTL_SECONDS = 1800  # 30 minutes
 STALE_THRESHOLD_SECONDS = 300  # 5 minutes
 STALE_EXEMPT_TOOLS = {"Read", "Bash", "WebFetch", "WebSearch", "Agent"}
+ACTIVITY_TTL_SECONDS = 30  # Tool activity clears after 30s of silence
+agent_last_tool_activity: dict[str, dict] = {}  # {agent: {"summary": str, "tool": str, "at": float}}
+agent_warp_tab_opened: set = set()  # Agents with an open Warp tab (prevents duplicate tabs)
+
+# External agents: Claude Code sessions that joined the War Room temporarily without
+# a managed tmux session. Presence is derived from their last posted message.
+EXTERNAL_PRESENCE_TIMEOUT = 300  # 5 minutes — external agent goes "offline" after this
+external_agents: set = set()  # Names of external agents
+external_agent_last_seen: dict[str, float] = {}  # {agent: unix_ts of last post}
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +606,18 @@ async def flush_queues_loop():
                 await asyncio.sleep(0.3)
 
 
+
+def _get_live_activity(agent_name: str, tmux_activity: dict) -> Optional[str]:
+    """Return the most recent activity: hook-reported (if < 30s old) > tmux-detected."""
+    hook = agent_last_tool_activity.get(agent_name)
+    if hook and (time.time() - hook["at"]) < ACTIVITY_TTL_SECONDS:
+        return hook["summary"]
+    # Expired hook activity — clean up
+    if hook and (time.time() - hook["at"]) >= ACTIVITY_TTL_SECONDS:
+        agent_last_tool_activity.pop(agent_name, None)
+    return tmux_activity.get("activity")
+
+
 async def agent_status_loop():
     """Background: push rich agent status (config + auto + manual) every 10s."""
     commit_counter = 0
@@ -611,6 +632,31 @@ async def agent_status_loop():
         for a in AGENTS:
             name = a["name"]
             session = a["tmux_session"]
+
+            # External agents: presence derived from last-seen heartbeat, not tmux
+            if a.get("external"):
+                last_seen = external_agent_last_seen.get(name, 0)
+                age = time.time() - last_seen
+                presence = "active" if age < EXTERNAL_PRESENCE_TIMEOUT else "offline"
+                manual = get_manual_status(name)
+                agents_data[name] = {
+                    "presence": "blocked" if manual.get("blocked_by") else presence,
+                    "activity": manual.get("activity"),
+                    "in_room": agent_membership.get(name, False),
+                    "session_alive": True,  # External sessions are "alive" as long as they post
+                    "dynamic": a.get("dynamic", False),
+                    "external": True,
+                    "task": manual.get("task"),
+                    "progress": manual.get("progress"),
+                    "eta": manual.get("eta"),
+                    "blocked_by": manual.get("blocked_by"),
+                    "blocked_reason": manual.get("blocked_reason"),
+                    "stalled": False,
+                    "stalled_minutes": 0,
+                    "last_commit": None,
+                }
+                continue
+
             activity = get_agent_activity(session)
 
             # Parse tool and file from activity string
@@ -637,7 +683,7 @@ async def agent_status_loop():
 
             agents_data[name] = {
                 "presence": "blocked" if manual.get("blocked_by") else ("stalled" if stalled else activity["presence"]),
-                "activity": activity.get("activity"),
+                "activity": _get_live_activity(name, activity),
                 "in_room": agent_membership.get(name, False),
                 "session_alive": tmux_session_exists(session),
                 "dynamic": a.get("dynamic", False),
@@ -879,12 +925,21 @@ class AgentCreate(BaseModel):
     icon: Optional[str] = None
 
 
+class AgentRegisterExternal(BaseModel):
+    name: str
+    role: str
+    role_type: str = "other"
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
+
 class AgentStatus(BaseModel):
     task: Optional[str] = None
     progress: Optional[int] = None
     eta: Optional[str] = None
     blocked_by: Optional[str] = None
     blocked_reason: Optional[str] = None
+    activity: Optional[str] = None
     clear: bool = False
 
 
@@ -896,6 +951,9 @@ STARTUP_MD = Path(__file__).parent / "startup.md"
 @app.post("/api/messages")
 async def create_message(msg: MessageCreate):
     saved = await save_message(msg.sender, msg.target, msg.content, msg.type)
+    # Heartbeat: external agents derive presence from their last post timestamp
+    if msg.sender in external_agents:
+        external_agent_last_seen[msg.sender] = time.time()
     await broadcast_ws({"type": "message", "message": saved})
     await dispatch_to_agents(saved)
     return saved
@@ -904,6 +962,48 @@ async def create_message(msg: MessageCreate):
 @app.get("/api/messages")
 async def list_messages(limit: int = 200):
     return await get_messages(limit)
+
+
+@app.get("/api/messages/wait")
+async def wait_for_messages(since: int = 0, agent: str = "", timeout: int = 60):
+    """Long-poll for new messages. Blocks up to `timeout` seconds.
+
+    Returns immediately if messages with id > since exist that are visible
+    to the given agent (broadcasts OR direct messages to them, excluding
+    their own posts). Otherwise waits up to `timeout` seconds for a new
+    message to arrive, polling the DB internally every 1s.
+
+    Use this from an external Claude Code session to receive messages
+    without constant manual polling — one call blocks until there is
+    something new to deliver.
+    """
+    if timeout < 1:
+        timeout = 1
+    if timeout > 120:
+        timeout = 120
+
+    deadline = time.time() + timeout
+    while True:
+        msgs = await get_messages(100)
+        # Filter: messages after `since`, not from this agent, visible to them
+        new = [
+            m for m in msgs
+            if m.get("id", 0) > since
+            and m.get("sender") != agent
+            and (not agent or m.get("target") in ("all", agent))
+        ]
+        if new:
+            # Heartbeat: external agents derive presence from activity
+            if agent and agent in external_agents:
+                external_agent_last_seen[agent] = time.time()
+            return {"messages": new, "timeout": False, "count": len(new)}
+        if time.time() >= deadline:
+            break
+        await asyncio.sleep(1)
+
+    if agent and agent in external_agents:
+        external_agent_last_seen[agent] = time.time()
+    return {"messages": [], "timeout": True, "count": 0}
 
 
 @app.get("/message/{msg_id}")
@@ -916,22 +1016,41 @@ async def get_single_message(msg_id: int):
 
 @app.get("/api/agents")
 async def list_agents():
-    return [
-        {
-            "name": a["name"],
-            "role": a["role"],
-            "instructions": a.get("instructions", ""),
-            "role_type": a.get("role_type", a["name"]),
-            "online": tmux_session_exists(a["tmux_session"]),
-            "presence": get_agent_activity(a["tmux_session"])["presence"],
-            "activity": get_agent_activity(a["tmux_session"])["activity"],
-            "in_room": agent_membership.get(a["name"], False),
-            "dynamic": a.get("dynamic", False),
-            "color": a.get("color"),
-            "icon": a.get("icon"),
-        }
-        for a in AGENTS
-    ]
+    result = []
+    for a in AGENTS:
+        if a.get("external"):
+            last_seen = external_agent_last_seen.get(a["name"], 0)
+            age = time.time() - last_seen
+            presence = "active" if age < EXTERNAL_PRESENCE_TIMEOUT else "offline"
+            result.append({
+                "name": a["name"],
+                "role": a["role"],
+                "instructions": a.get("instructions", ""),
+                "role_type": a.get("role_type", a["name"]),
+                "online": presence == "active",
+                "presence": presence,
+                "activity": None,
+                "in_room": agent_membership.get(a["name"], False),
+                "dynamic": a.get("dynamic", False),
+                "external": True,
+                "color": a.get("color"),
+                "icon": a.get("icon"),
+            })
+        else:
+            result.append({
+                "name": a["name"],
+                "role": a["role"],
+                "instructions": a.get("instructions", ""),
+                "role_type": a.get("role_type", a["name"]),
+                "online": tmux_session_exists(a["tmux_session"]),
+                "presence": get_agent_activity(a["tmux_session"])["presence"],
+                "activity": get_agent_activity(a["tmux_session"])["activity"],
+                "in_room": agent_membership.get(a["name"], False),
+                "dynamic": a.get("dynamic", False),
+                "color": a.get("color"),
+                "icon": a.get("icon"),
+            })
+    return result
 
 
 class AgentIdentityUpdate(BaseModel):
@@ -1137,6 +1256,10 @@ async def set_agent_status(agent_name: str, body: AgentStatus):
     if body.blocked_reason is not None and body.blocked_by is None:
         current["blocked_reason"] = body.blocked_reason
 
+    if body.activity is not None:
+        current["activity"] = body.activity
+
+
     current["updated_at"] = time.time()
     agent_manual_status[agent_name] = current
 
@@ -1176,7 +1299,7 @@ async def get_agent_status(agent_name: str):
     return {
         "agent": agent_name,
         "presence": "blocked" if manual.get("blocked_by") else activity["presence"],
-        "activity": activity.get("activity"),
+        "activity": _get_live_activity(agent_name, activity),
         "in_room": agent_membership.get(agent_name, False),
         "dynamic": agent_cfg.get("dynamic", False) if agent_cfg else False,
         "task": manual.get("task"),
@@ -1210,6 +1333,10 @@ async def agent_remove(agent_name: str):
     agent_last_commit.pop(agent_name, None)
     agent_queues.pop(agent_name, None)
     agent_config.pop(agent_name, None)
+    agent_last_tool_activity.pop(agent_name, None)
+    agent_warp_tab_opened.discard(agent_name)
+    external_agents.discard(agent_name)
+    external_agent_last_seen.pop(agent_name, None)
 
     # Remove from AGENTS list
     for i, a in enumerate(AGENTS):
@@ -1235,6 +1362,8 @@ async def recover_agent(agent_name: str):
     session = AGENT_SESSIONS.get(agent_name, f"warroom-{agent_name}")
     if tmux_session_exists(session):
         return JSONResponse({"error": f"Agent '{agent_name}' session is already alive"}, status_code=400)
+    # Recovery means the old tmux session died, so any existing Warp tab is now stale.
+    agent_warp_tab_opened.discard(agent_name)
 
     config = agent_config.get(agent_name, {})
     agent_dir = config.get("directory", PROJECT_PATH)
@@ -1551,6 +1680,85 @@ async def create_agent(req: AgentCreate):
         )
 
 
+@app.post("/api/agents/register-external")
+async def register_external_agent(req: AgentRegisterExternal):
+    """Register an existing Claude Code session as a War Room participant.
+
+    Unlike /api/agents/create, this does NOT:
+      - Create a tmux session
+      - Launch Claude Code
+      - Write .claude/settings.local.json
+
+    The external agent is responsible for posting to /api/messages manually.
+    Presence is derived from heartbeats (last post timestamp).
+
+    Use this when you want to pull an already-running Claude Code session into
+    the War Room temporarily. Use /api/agents/{name}/remove to unregister.
+    """
+    if not NAME_PATTERN.match(req.name):
+        return JSONResponse(
+            {"error": "Name must be 2-20 chars, lowercase alphanumeric + hyphens"},
+            status_code=400,
+        )
+    if req.name in AGENT_NAMES:
+        return JSONResponse(
+            {"error": f"Agent '{req.name}' already exists"},
+            status_code=400,
+        )
+
+    session = f"external-{req.name}"  # Fake session name — never touched by tmux
+    agent_entry = {
+        "name": req.name,
+        "role": req.role,
+        "instructions": "",
+        "role_type": req.role_type or "other",
+        "tmux_session": session,
+        "dynamic": True,
+        "external": True,
+        "color": req.color,
+        "icon": req.icon,
+        "launched_at": time.time(),
+    }
+    AGENTS.append(agent_entry)
+    AGENT_NAMES.add(req.name)
+    AGENT_SESSIONS[req.name] = session
+    AGENT_DIRS[req.name] = ""  # External agents have no managed directory
+    agent_membership[req.name] = True
+    external_agents.add(req.name)
+    external_agent_last_seen[req.name] = time.time()
+
+    # Announce
+    saved = await save_message(
+        "system", "all", f"{req.name} has joined the war room (external)", "system"
+    )
+    await broadcast_ws({"type": "message", "message": saved})
+    await broadcast_ws({
+        "type": "agent_created",
+        "agent": {
+            "name": req.name,
+            "role": req.role,
+            "presence": "active",
+            "activity": None,
+            "in_room": True,
+            "dynamic": True,
+            "external": True,
+            "color": req.color,
+            "icon": req.icon,
+        },
+    })
+
+    return {
+        "status": "registered",
+        "agent": {
+            "name": req.name,
+            "role": req.role,
+            "external": True,
+            "presence": "active",
+            "in_room": True,
+        },
+    }
+
+
 async def _warp_inject(cmd: str, delay: float = 1.2) -> None:
     """Wait for the new Warp shell to initialise, then type `cmd` + Enter."""
     await asyncio.sleep(delay)
@@ -1570,11 +1778,17 @@ async def _warp_inject(cmd: str, delay: float = 1.2) -> None:
 
 @app.post("/api/agents/{agent_name}/attach")
 async def agent_attach(agent_name: str):
-    """Pop out an agent's Claude Code session into a new terminal window."""
+    """Pop out an agent's Claude Code session into a terminal window.
+
+    Tracks per-agent whether a Warp tab has already been opened. On a second
+    click, activates Warp (brings it to front) instead of creating a duplicate
+    tab. The user navigates to the existing tab via Warp's native tab switcher.
+    """
     if agent_name not in AGENT_NAMES:
         return JSONResponse({"error": f"Unknown agent: {agent_name}"}, status_code=404)
     session = AGENT_SESSIONS.get(agent_name)
     if not tmux_session_exists(session):
+        agent_warp_tab_opened.discard(agent_name)
         return JSONResponse({"error": f"No tmux session for {agent_name}"}, status_code=404)
 
     # Get the agent's working directory for Warp's file browser
@@ -1588,22 +1802,31 @@ async def agent_attach(agent_name: str):
             capture_output=True, timeout=2,
         )
 
+        warp = Path("/Applications/Warp.app")
+
+        # If we already opened a Warp tab for this agent and the tmux session
+        # is alive, just activate Warp — do NOT create a duplicate tab.
+        if warp.exists() and agent_name in agent_warp_tab_opened:
+            subprocess.run(
+                ["osascript", "-e", 'tell application "Warp" to activate'],
+                capture_output=True, timeout=5,
+            )
+            return {"status": "already_open", "agent": agent_name, "session": session}
+
         attach_cmd = f"exec tmux attach -t {session}"
 
-        warp = Path("/Applications/Warp.app")
         if warp.exists():
-            # Step 1: open a new Warp tab at the agent directory.
-            # warp:// URL scheme opens the tab but ignores any 'command' parameter.
+            # First time: open a new Warp tab at the agent directory.
             warp_url = "warp://action/new_tab?" + urllib.parse.urlencode({"path": agent_dir})
             subprocess.run(["open", warp_url], capture_output=True, timeout=5)
-            # Step 2: after the shell initialises, inject the attach command.
-            # Prefix with an OSC title escape so the Warp tab is named after the
-            # agent before zsh or tmux can overwrite it with "exec" or the cwd.
+            # Inject the attach command after the shell initialises.
+            # OSC title escape names the tab before zsh/tmux can overwrite it.
             titled_cmd = (
                 f"printf '\\033]0;{agent_name} \u2014 War Room\\007'; "
                 f"{attach_cmd}"
             )
             asyncio.create_task(_warp_inject(titled_cmd))
+            agent_warp_tab_opened.add(agent_name)
         else:
             subprocess.run(
                 ["osascript", "-e",
@@ -1759,6 +1982,8 @@ class HookEventCreate(BaseModel):
 @app.post("/api/hooks/event")
 async def receive_hook_event(event: HookEventCreate):
     """Receive hook callback data from agent hook scripts."""
+    if event.agent not in AGENT_NAMES:
+        return JSONResponse({"error": f"Unknown agent: {event.agent}"}, status_code=404)
     summary = event.summary[:2000] if event.summary else ""
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -1771,6 +1996,14 @@ async def receive_hook_event(event: HookEventCreate):
              event.tool, event.exit_code, summary),
         )
         await db.commit()
+
+    # Track latest tool activity for live card display
+    if event.event_type == "tool_use" and event.agent:
+        agent_last_tool_activity[event.agent] = {
+            "summary": summary,
+            "tool": event.tool,
+            "at": time.time(),
+        }
 
     # Broadcast to WebSocket clients
     ws_event = {
